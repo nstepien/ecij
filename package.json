@@ -1,0 +1,51 @@
+{
+  "name": "ecis",
+  "version": "0.1.0",
+  "description": "Rolldown and Vite plugin to Extract CSS-in-JS",
+  "keywords": [
+    "css-in-js"
+  ],
+  "homepage": "https://github.com/nstepien/ecis#readme",
+  "bugs": {
+    "url": "https://github.com/nstepien/ecis/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nstepien/ecis.git"
+  },
+  "license": "MIT",
+  "author": "Nicolas Stepien",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./plugin": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "index.js",
+  "files": [
+    "dist",
+    "index.d.ts"
+  ],
+  "scripts": {
+    "build": "rolldown -c",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "oxc-parser": "^0.97.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "prettier": "^3.6.2",
+    "rolldown": "^1.0.0-beta.50",
+    "rolldown-plugin-dts": "^0.17.7",
+    "typescript": "^5.9.3"
+  }
+}

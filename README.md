@@ -1,0 +1,126 @@
+# ecis
+
+ecis (**E**xtract **C**SS-**i**n-**J**S) is a zero-runtime css-in-js plugin for [Rolldown](https://rolldown.rs/) and [Vite](https://vite.dev/).
+
+It achieves this via static analysis by using [oxc-parser](https://www.npmjs.com/package/oxc-parser), as such it is limited to static expressions. The plugin will ignore dynamic or complex expressions.
+
+The plugin does not process the CSS in any way whatsoever, it is merely output in virtual CSS files for Rolldown and Vite to handle. Separate plugins may be used to process these virtual CSS files.
+
+## Installation
+
+```
+npm install -D ecis
+```
+
+## Usage
+
+Source input:
+
+```ts
+/* main.ts */
+import { css } from 'ecis';
+import { redClassname } from './styles';
+
+const myButtonClassname = css`
+  border: 1px solid blue;
+
+  &.${redClassname} {
+    border-color: red;
+  }
+`;
+```
+
+```ts
+/* styles.ts */
+import { css } from 'ecis';
+
+const color = 'red';
+
+export const redClassname = css`
+  color: ${color};
+`;
+```
+
+Build output:
+
+```js
+/* js */
+const color = 'red';
+
+const redClassname = 'css-a1b2c3d4';
+
+const myButtonClassname = 'css-1d2c3b4a';
+```
+
+```css
+/* css */
+.css-a1b2c3d4 {
+  color: red;
+}
+
+.css-1d2c3b4a {
+  border: 1px solid blue;
+
+  &.css-a1b2c3d4 {
+    border-color: red;
+  }
+}
+```
+
+## Set up
+
+In `rolldown.config.ts`:
+
+```ts
+import { defineConfig } from 'rolldown';
+import { ecis } from 'ecis/plugin';
+
+export default defineConfig({
+  // ...
+  plugins: [ecis()],
+});
+```
+
+In `vite.config.ts`:
+
+```ts
+import { defineConfig } from 'vite';
+import { ecis } from 'ecis/plugin';
+
+export default defineConfig({
+  // ...
+  plugins: [ecis()],
+});
+```
+
+## Configuration
+
+The `ecis()` plugin accepts an optional configuration object:
+
+```ts
+export interface Configuration {
+  /**
+   * Prefix for generated CSS class names.
+   * Should not be empty, as generated hashes may start with a digit, resulting in invalid CSS class names.
+   * @default 'css-'
+   */
+  classPrefix?: string;
+}
+```
+
+**Example:**
+
+```ts
+ecis({
+  classPrefix: 'lib-',
+});
+```
+
+## TODO
+
+- Tests
+- Support `include`/`exclude` configuration
+- Scope handling
+- Validate that the `css` used refers to
+- Full import/export handling (default/namespace import/export)
+- Sourcemaps
