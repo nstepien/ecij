@@ -429,7 +429,9 @@ export function ecis({ classPrefix = 'css-' }: Configuration = {}): Plugin {
     const cssBlocks = [];
 
     for (const { className, cssContent } of cssExtractions) {
-      cssBlocks.push(`.${className} {\n  ${cssContent}\n}`);
+      if (cssContent !== '') {
+        cssBlocks.push(`.${className} {\n  ${cssContent}\n}`);
+      }
     }
 
     const cssContent = cssBlocks.join('\n\n');
