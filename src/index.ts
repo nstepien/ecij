@@ -498,19 +498,25 @@ export function ecis({ classPrefix = 'css-' }: Configuration = {}): Plugin {
         return null;
       }
 
-      // Generate CSS module ID for this file
-      // A hash of the CSS content is created to make HMR work
-      // Use the original file path with .css extension
-      // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
-      const hash = hashText(cssContent);
-      const cssModuleId = `${cleanId}.${hash}.css`;
+      let finalCode = transformedCode;
 
-      // Store the CSS extractions for this file
-      extractedCssPerFile.set(cssModuleId, cssContent);
+      // Avoid outputing empty CSS modules
+      if (cssContent !== '') {
+        // Generate CSS module ID for this file
+        // A hash of the CSS content is created to make HMR work
+        // Use the original file path with .css extension
+        // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
+        const hash = hashText(cssContent);
+        const cssModuleId = `${cleanId}.${hash}.css`;
 
-      // Add CSS module import
-      let finalCode = addCssImport(transformedCode, cssModuleId);
+        // Store the CSS extractions for this file
+        extractedCssPerFile.set(cssModuleId, cssContent);
 
+        // Add CSS module import
+        finalCode = addCssImport(finalCode, cssModuleId);
+      }
+
+      // TODO: let rolldown tree-shake it?
       // Only remove the css import if we processed all css`` blocks
       if (!hasUnprocessedCssBlocks) {
         finalCode = removeImport(finalCode);
