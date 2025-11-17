@@ -20,7 +20,8 @@ interface Declaration {
   hasInterpolations: boolean;
 }
 
-const JS_TS_FILE_REGEX = /\.[jtc]sx?$/;
+// allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, .tsx files
+const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 
 // Get the project root directory
 const PROJECT_ROOT = cwd();
