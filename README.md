@@ -134,6 +134,6 @@ ecij({
 
 - Tests
 - Scope handling
-- Validate that the `css` used refers to
+- Validate that the `css` used refers to the ecij export
 - Full import/export handling (default/namespace import/export)
 - Sourcemaps
