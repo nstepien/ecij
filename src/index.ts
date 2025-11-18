@@ -183,14 +183,15 @@ export function ecij({
           handleTaggedTemplateExpression(localName, node.init);
         } else if (
           node.init.type === 'Literal' &&
-          typeof node.init.value === 'string'
+          (typeof node.init.value === 'string' ||
+            typeof node.init.value === 'number')
         ) {
           const exportedName = localNameToExportedNameMap.get(localName);
 
           if (exportedName === undefined) return;
 
           const cacheKey = `${resolvedPath}:${exportedName}`;
-          importedClassNameCache.set(cacheKey, node.init.value);
+          importedClassNameCache.set(cacheKey, String(node.init.value));
         }
       },
       TaggedTemplateExpression(node) {
@@ -327,9 +328,10 @@ export function ecij({
           handleTaggedTemplateExpression(localName, node.init);
         } else if (
           node.init.type === 'Literal' &&
-          typeof node.init.value === 'string'
+          (typeof node.init.value === 'string' ||
+            typeof node.init.value === 'number')
         ) {
-          localClassNames.set(localName, node.init.value);
+          localClassNames.set(localName, String(node.init.value));
         }
       },
       TaggedTemplateExpression(node) {
@@ -404,7 +406,6 @@ export function ecij({
           }
 
           const identifierName = expression.name;
-          // TODO: resolve static string values as well
           const resolvedClassName = await resolveClassName(identifierName);
 
           if (resolvedClassName === undefined) {

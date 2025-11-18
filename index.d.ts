@@ -16,5 +16,5 @@
  */
 export function css(
   strings: TemplateStringsArray,
-  ...expressions: Array<string>
+  ...expressions: Array<string | number>
 ): string;
