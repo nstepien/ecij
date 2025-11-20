@@ -46,18 +46,14 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           npm version ${{ inputs.version }}
 
+      # https://docs.npmjs.com/trusted-publishers
       - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
 
       - name: Push commit and tag
         run: git push origin main --follow-tags
 
       - name: Create GitHub Release
-        uses: actions/create-release@v1
+        run: gh release create v${{ inputs.version }} --title "v${{ inputs.version }}" --generate-notes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ inputs.version }}
-          release_name: v${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
