@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": true,
+    "noCheck": true,
+    "types": ["node"]
+  },
+  "files": ["src/index.ts"]
+}

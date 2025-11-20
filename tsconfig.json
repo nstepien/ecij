@@ -1,28 +1,7 @@
 {
-  "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
-    "declaration": true,
-    "erasableSyntaxOnly": true,
-    "exactOptionalPropertyTypes": true,
-    "forceConsistentCasingInFileNames": true,
-    "isolatedDeclarations": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "lib": ["ESNext"],
-    "libReplacement": false,
-    "module": "esnext",
-    "moduleDetection": "force",
-    "moduleResolution": "bundler",
-    "noImplicitReturns": true,
-    "noUnusedLocals": true,
-    "outDir": "./.cache/ts",
-    "pretty": true,
-    "strict": true,
-    "target": "esnext",
-    "types": ["node"],
-    "useUnknownInCatchVariables": true,
-    "verbatimModuleSyntax": true
-  },
-  "files": ["src/index.ts"],
-  "include": []
+  "include": [],
+  "references": [
+    { "path": "tsconfig.src.json" },
+    { "path": "tsconfig.tools.json" }
+  ]
 }
