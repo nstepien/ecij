@@ -8,5 +8,9 @@ export default defineConfig({
   },
   platform: 'node',
   external: (id) => !id.startsWith('.'),
-  plugins: [dts()],
+  plugins: [
+    dts({
+      tsconfig: './tsconfig.lib.json',
+    }),
+  ],
 });
