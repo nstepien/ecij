@@ -1,5 +1,8 @@
 # ecij
 
+[![npm version](https://img.shields.io/npm/v/ecij)](https://www.npmjs.com/package/ecij)
+[![CI](https://github.com/nstepien/ecij/actions/workflows/ci.yml/badge.svg)](https://github.com/nstepien/ecij/actions/workflows/ci.yml)
+
 ecij (**E**xtract **C**SS-**i**n-**J**S) is a zero-runtime css-in-js plugin for [Rolldown](https://rolldown.rs/) and [Vite](https://vite.dev/).
 
 It achieves this via static analysis by using [oxc-parser](https://www.npmjs.com/package/oxc-parser), as such it is limited to static expressions. The plugin will ignore dynamic or complex expressions.
