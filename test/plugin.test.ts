@@ -166,9 +166,12 @@ test('skip css blocks with complex interpolations', async () => {
       color: \${Math.random() > .5 ? "red" : "blue"};
       padding: 10px;
     \`;
+    const unresolvedIdentifierClass = css\`
+      color: \${unknownVariable};
+    \`;
 
     //#endregion
-    export { dynamicClass };"
+    export { dynamicClass, unresolvedIdentifierClass };"
   `);
 
   // CSS blocks with complex expressions are skipped
