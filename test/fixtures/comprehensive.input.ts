@@ -1,5 +1,6 @@
 import { css } from 'ecij';
 import { bgColor as background, redClass, width } from './imported-style';
+import { fontSize, fontWeight } from './imported-literals';
 
 // Basic CSS transformation
 export const buttonClass = css`
@@ -19,12 +20,19 @@ export const secondaryClass = css`
   color: green;
 `;
 
+// empty CSS blocks do not produce any CSS output
+const emptyClass = css``;
+
 // Local variable interpolation
 const baseColor = 'red';
 
 const highlightedClass = css`
   /* highlighted */
   color: ${baseColor};
+
+  &.${emptyClass} {
+    font-weight: bold;
+  }
 `;
 
 // Imported variable and class name interpolation
@@ -32,6 +40,8 @@ export const importedClass = css`
   /* imported */
   background: ${background};
   width: ${width}px;
+  font-size: ${fontSize}px;
+  font-weight: ${fontWeight};
 
   &.${redClass} {
     border-color: red;

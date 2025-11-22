@@ -9,3 +9,10 @@ export const buttonClass = css`
   color: blue;
   padding: 10px;
 `;
+
+export function getButtonClass() {
+  return css`
+    background: green;
+    padding: 8px 16px;
+  `;
+}

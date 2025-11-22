@@ -35,13 +35,13 @@ interface Declaration {
 }
 
 interface ParsedFileInfo {
-  declarations: Declaration[];
-  localIdentifiers: ReadonlyMap<string, string>;
-  importedIdentifiers: ReadonlyMap<
+  readonly declarations: readonly Declaration[];
+  readonly localIdentifiers: ReadonlyMap<string, string>;
+  readonly importedIdentifiers: ReadonlyMap<
     string,
     { source: string; imported: string }
   >;
-  exportNameToValueMap: ReadonlyMap<string, string>;
+  readonly exportNameToValueMap: ReadonlyMap<string, string>;
 }
 
 // allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, .tsx files
@@ -56,23 +56,6 @@ const PROJECT_ROOT = cwd();
 
 function hashText(text: string): string {
   return createHash('md5').update(text).digest('hex').slice(0, 8);
-}
-
-/**
- * Removes the import statement for 'ecij'
- */
-function removeImport(code: string): string {
-  // TODO: remove via ast
-  // Remove import { css } from 'ecij';
-  return code.replace(/import\s+{\s*css\s*}\s+from\s+['"]ecij['"];?\s*/g, '');
-}
-
-/**
- * Adds import for CSS module at the top of the file
- */
-function addCssImport(code: string, cssModuleId: string): string {
-  // use JSON.stringify to properly escape the module ID, including \ delimiters on Windows
-  return `import ${JSON.stringify(cssModuleId)};\n\n${code}`;
 }
 
 export function ecij({
@@ -111,25 +94,44 @@ export function ecij({
       code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
 
     const parseResult = parseSync(filePath, sourceText);
+    const declarations: Declaration[] = [];
+    const localIdentifiers = new Map<string, string>();
     const importedIdentifiers = new Map<
       string,
       { source: string; imported: string }
     >();
+    const exportNameToValueMap = new Map<string, string>();
+    const localNameToExportedNameMap = new Map<string, string>();
+    const taggedTemplateExpressionFromVariableDeclarator =
+      new Set<TaggedTemplateExpression>();
+    let hasCSSTagImport = false;
+
+    const parsedInfo: ParsedFileInfo = {
+      declarations,
+      localIdentifiers,
+      importedIdentifiers,
+      exportNameToValueMap,
+    };
+
+    parsedFileInfoCache.set(filePath, parsedInfo);
 
     // Collect imports
     for (const staticImport of parseResult.module.staticImports) {
       for (const entry of staticImport.entries) {
         // TODO: support default and namespace imports
         if (entry.importName.kind === 'Name') {
-          importedIdentifiers.set(entry.localName.value, {
-            source: staticImport.moduleRequest.value,
-            imported: entry.importName.name!,
-          });
+          const source = staticImport.moduleRequest.value;
+          const imported = entry.importName.name!;
+          const localName = entry.localName.value;
+
+          if (source === 'ecij' && imported === 'css' && localName === 'css') {
+            hasCSSTagImport = true;
+          }
+
+          importedIdentifiers.set(localName, { source, imported });
         }
       }
     }
-
-    const localNameToExportedNameMap = new Map<string, string>();
 
     // Collect exports
     for (const staticExport of parseResult.module.staticExports) {
@@ -149,13 +151,6 @@ export function ecij({
       }
     }
 
-    const declarations: Declaration[] = [];
-    const localIdentifiers = new Map<string, string>();
-    const exportNameToValueMap = new Map<string, string>();
-
-    const taggedTemplateExpressionFromVariableDeclarator =
-      new Set<TaggedTemplateExpression>();
-
     function recordIdentifierWithValue(localName: string, value: string) {
       localIdentifiers.set(localName, value);
 
@@ -169,7 +164,13 @@ export function ecij({
       localName: string | undefined,
       node: TaggedTemplateExpression,
     ) {
-      if (!(node.tag.type === 'Identifier' && node.tag.name === 'css')) {
+      if (
+        !(
+          hasCSSTagImport &&
+          node.tag.type === 'Identifier' &&
+          node.tag.name === 'css'
+        )
+      ) {
         return;
       }
 
@@ -225,15 +226,6 @@ export function ecij({
 
     visitor.visit(parseResult.program);
 
-    const parsedInfo: ParsedFileInfo = {
-      declarations,
-      localIdentifiers,
-      importedIdentifiers,
-      exportNameToValueMap,
-    };
-
-    parsedFileInfoCache.set(filePath, parsedInfo);
-
     return parsedInfo;
   }
 
@@ -249,7 +241,6 @@ export function ecij({
     transformedCode: string;
     hasExtractions: boolean;
     cssContent: string;
-    hasUnprocessedCssBlocks: boolean;
   }> {
     const { declarations, localIdentifiers, importedIdentifiers } =
       await parseFile(context, filePath, code);
@@ -368,7 +359,6 @@ export function ecij({
         transformedCode: code,
         hasExtractions: false,
         cssContent: '',
-        hasUnprocessedCssBlocks: false,
       };
     }
 
@@ -382,10 +372,6 @@ export function ecij({
     for (const { start, end, className } of replacements) {
       transformedCode = `${transformedCode.slice(0, start)}'${className}'${transformedCode.slice(end)}`;
     }
-
-    // If we have any css`` blocks that couldn't be processed (skipped due to unresolved interpolations),
-    // we shouldn't remove the css import
-    const hasUnprocessedCssBlocks = declarations.length > replacements.length;
 
     // Sort CSS extractions by source position to maintain original order
     cssExtractions.sort((a, b) => a.sourcePosition - b.sourcePosition);
@@ -405,7 +391,6 @@ export function ecij({
       transformedCode,
       hasExtractions: true,
       cssContent,
-      hasUnprocessedCssBlocks,
     };
   }
 
@@ -443,53 +428,44 @@ export function ecij({
         },
       },
       async handler(code, id) {
-        // Remove query parameters from the ID
-        const queryIndex = id.indexOf('?');
-        const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
-
         // Check if the file references 'ecij'
         if (!code.includes('ecij')) {
           return null;
         }
 
+        // Remove query parameters from the ID
+        const queryIndex = id.indexOf('?');
+        const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
+
         // Extract CSS from the code
-        const {
-          transformedCode,
-          hasExtractions,
-          cssContent,
-          hasUnprocessedCssBlocks,
-        } = await extractCssFromCode(this, code, cleanId);
+        const { transformedCode, hasExtractions, cssContent } =
+          await extractCssFromCode(this, code, cleanId);
 
         if (!hasExtractions) {
           return null;
         }
 
-        let finalCode = transformedCode;
-
         // Avoid outputing empty CSS modules
-        if (cssContent !== '') {
-          // Generate CSS module ID for this file
-          // A hash of the CSS content is created to make HMR work
-          // Use the original file path with .css extension
-          // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
-          const hash = hashText(cssContent);
-          const cssModuleId = `${cleanId}.${hash}.css`;
-
-          // Store the CSS extractions for this file
-          extractedCssPerFile.set(cssModuleId, cssContent);
-
-          // Add CSS module import
-          finalCode = addCssImport(finalCode, cssModuleId);
+        if (cssContent === '') {
+          return transformedCode;
         }
 
-        // TODO: let rolldown tree-shake it?
-        // Only remove the css import if we processed all css`` blocks
-        if (!hasUnprocessedCssBlocks) {
-          finalCode = removeImport(finalCode);
-        }
+        // Generate CSS module ID for this file
+        // A hash of the CSS content is created to make HMR work
+        // Use the original file path with .css extension
+        // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
+        const hash = hashText(cssContent);
+        const cssModuleId = `${cleanId}.${hash}.css`;
 
-        // TODO return sourcemaps
-        return finalCode;
+        // Store the CSS extractions for this file
+        extractedCssPerFile.set(cssModuleId, cssContent);
+
+        // use JSON.stringify to properly escape the module ID,
+        // including \ delimiters on Windows.
+        const importStatement = `import ${JSON.stringify(cssModuleId)};`;
+
+        // Add CSS module import at the top of the file.
+        return `${importStatement}\n${transformedCode}`;
       },
     },
   };
