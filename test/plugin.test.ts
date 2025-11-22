@@ -39,10 +39,10 @@ test('comprehensive CSS-in-JS patterns', async () => {
     const buttonClass = "css-39ccb25d";
     const primaryClass = "css-7a998145";
     const secondaryClass = "css-6c03a746";
-    const importedClass = "css-873c0af7";
-    const nestedClass = "css-558a1973";
+    const importedClass = "css-4f842925";
+    const nestedClass = "css-234be203";
     function getButtonClass() {
-    	return "css-05de2aa1";
+    	return "css-6c89bbd7";
     }
 
     //#endregion
@@ -65,12 +65,16 @@ test('comprehensive CSS-in-JS patterns', async () => {
       color: green;
     }
 
-    .css-51df74aa {
+    .css-f67b7304 {
       /* highlighted */
       color: red;
+
+      &.css-af173032 {
+        font-weight: bold;
+      }
     }
 
-    .css-873c0af7 {
+    .css-4f842925 {
       /* imported */
       background: white;
       width: 40.123px;
@@ -82,16 +86,16 @@ test('comprehensive CSS-in-JS patterns', async () => {
       }
     }
 
-    .css-558a1973 {
+    .css-234be203 {
       /* nested */
       background: gray;
 
-      &.css-51df74aa {
+      &.css-f67b7304 {
         color: red;
       }
     }
 
-    .css-05de2aa1 {
+    .css-6c89bbd7 {
       /* inline css */
         background: blue;
         padding: 8px 16px;
@@ -188,6 +192,22 @@ test('skip css blocks with complex interpolations', async () => {
   `);
 
   // CSS blocks with complex expressions are skipped
+  expect(result.css).toBeUndefined();
+});
+
+test('skip empty css blocks', async () => {
+  const fixturePath = import.meta.resolve('./fixtures/empty-css.input.ts');
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/empty-css.input.ts
+    const emptyClass = "css-f993173e";
+
+    //#endregion
+    export { emptyClass };"
+  `);
+
+  // No CSS should be generated
   expect(result.css).toBeUndefined();
 });
 

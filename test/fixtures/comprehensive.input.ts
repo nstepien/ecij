@@ -20,12 +20,19 @@ export const secondaryClass = css`
   color: green;
 `;
 
+// empty CSS blocks do not produce any CSS output
+const emptyClass = css``;
+
 // Local variable interpolation
 const baseColor = 'red';
 
 const highlightedClass = css`
   /* highlighted */
   color: ${baseColor};
+
+  &.${emptyClass} {
+    font-weight: bold;
+  }
 `;
 
 // Imported variable and class name interpolation
