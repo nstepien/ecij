@@ -168,9 +168,8 @@ test('ignore non-ecij css tag functions', async () => {
 });
 
 test('skip css blocks with complex interpolations', async () => {
-  const fixturePath = import.meta.resolve(
-    './fixtures/complex-interpolation.input.ts',
-  );
+  const fixturePath = import.meta
+    .resolve('./fixtures/complex-interpolation.input.ts');
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
