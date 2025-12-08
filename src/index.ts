@@ -423,10 +423,11 @@ export function ecij({
       // Ensure JS modules with CSS extractions are included,
       // otherwise they may be tree-shaken away if
       // all their exports are evaluated away
-      if (parsedFileInfoCache.has(id)) {
-        if (parsedFileInfoCache.get(id)!.declarations.length !== 0) {
-          return id;
-        }
+      if (
+        parsedFileInfoCache.has(id) &&
+        parsedFileInfoCache.get(id)!.declarations.length !== 0
+      ) {
+        return id;
       }
 
       return null;

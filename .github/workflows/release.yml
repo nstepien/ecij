@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -54,8 +54,8 @@ jobs:
       - name: Publish to npm
         run: npm publish
 
-      - name: Push commit and tag
-        run: git push origin main --follow-tags
+      - name: Push tag
+        run: git push origin v${{ inputs.version }}
 
       - name: Create GitHub Release
         run: gh release create v${{ inputs.version }} --title "v${{ inputs.version }}" --generate-notes
