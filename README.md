@@ -172,6 +172,5 @@ npm test -- -u
 
 - Log CSS extraction failures
 - Scope handling
-- Validate that the `css` used refers to the ecij export
 - Full import/export handling (default/namespace import/export)
 - Sourcemaps
