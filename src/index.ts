@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { relative } from 'node:path';
 import { cwd } from 'node:process';
-import { parseSync, Visitor, type TaggedTemplateExpression } from 'oxc-parser';
-import { makeIdFiltersToMatchWithQuery } from '@rolldown/pluginutils';
 import type { Plugin, TransformPluginContext } from 'rolldown';
+import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
+import { parseSync, Visitor } from 'rolldown/utils';
+import type { TaggedTemplateExpression } from '@oxc-project/types';
 
 export interface Configuration {
   /**
