@@ -9,14 +9,19 @@
   "bugs": {
     "url": "https://github.com/nstepien/ecij/issues"
   },
+  "license": "MIT",
+  "author": "Nicolas Stepien",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nstepien/ecij.git"
   },
-  "license": "MIT",
-  "author": "Nicolas Stepien",
+  "files": [
+    "dist",
+    "index.d.ts"
+  ],
   "type": "module",
   "sideEffects": false,
+  "main": "index.js",
   "exports": {
     ".": {
       "types": "./index.d.ts",
@@ -27,11 +32,6 @@
       "default": "./dist/index.js"
     }
   },
-  "main": "index.js",
-  "files": [
-    "dist",
-    "index.d.ts"
-  ],
   "scripts": {
     "build": "rolldown -c",
     "format": "oxfmt",
