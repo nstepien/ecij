@@ -63,6 +63,10 @@ export function ecij({
 }: Configuration = {}): Plugin {
   const parsedFileInfoCache = new Map<string, ParsedFileInfo>();
 
+  // Map to store generated CSS module IDs for each source file, used to mark modules as having side effects
+  // Key: module id, Value: CSS module id
+  const stylesheetImportPerFile = new Map<string, string>();
+
   // Map to store extracted CSS content per source file
   // Key: virtual module ID, Value: css content
   const extractedCssPerFile = new Map<string, string>();
@@ -224,7 +228,7 @@ export function ecij({
     transformedCode: string;
     hasExtractions: boolean;
     cssContent: string;
-    modulesWithSideEffects: Set<string>;
+    stylesheetDependencies: Set<string>;
   }> {
     const { declarations, localIdentifiers, importedIdentifiers } = await parseFile(
       context,
@@ -242,7 +246,7 @@ export function ecij({
       end: number;
       className: string;
     }> = [];
-    const modulesWithSideEffects = new Set<string>();
+    const stylesheetDependencies = new Set<string>();
 
     // Helper to resolve a value from an identifier
     async function resolveValue(identifierName: string): Promise<string | undefined> {
@@ -259,13 +263,16 @@ export function ecij({
         const resolvedId = await context.resolve(source, filePath);
 
         if (resolvedId != null) {
+          // populate the cache for the imported file
+          await context.load(resolvedId);
+
           const { id } = resolvedId;
 
-          const { declarations, exportNameToValueMap } = await parseFile(context, id);
+          const { exportNameToValueMap } = await parseFile(context, id);
 
           if (exportNameToValueMap.has(imported)) {
-            if (declarations.length !== 0) {
-              modulesWithSideEffects.add(id);
+            if (stylesheetImportPerFile.has(id)) {
+              stylesheetDependencies.add(stylesheetImportPerFile.get(id)!);
             }
             return exportNameToValueMap.get(imported)!;
           }
@@ -346,7 +353,7 @@ export function ecij({
         transformedCode: code,
         hasExtractions: false,
         cssContent: '',
-        modulesWithSideEffects,
+        stylesheetDependencies,
       };
     }
 
@@ -379,7 +386,7 @@ export function ecij({
       transformedCode,
       hasExtractions: true,
       cssContent,
-      modulesWithSideEffects,
+      stylesheetDependencies,
     };
   }
 
@@ -389,6 +396,7 @@ export function ecij({
     buildEnd() {
       // Clear caches between builds
       parsedFileInfoCache.clear();
+      stylesheetImportPerFile.clear();
       extractedCssPerFile.clear();
     },
 
@@ -435,7 +443,7 @@ export function ecij({
         const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
 
         // Extract CSS from the code
-        const { transformedCode, hasExtractions, cssContent, modulesWithSideEffects } =
+        const { transformedCode, hasExtractions, cssContent, stylesheetDependencies } =
           await extractCssFromCode(this, code, cleanId);
 
         if (!hasExtractions) {
@@ -456,6 +464,7 @@ export function ecij({
 
         // Store the CSS extractions for this file
         extractedCssPerFile.set(cssModuleId, cssContent);
+        stylesheetImportPerFile.set(id, cssModuleId);
 
         const importStatements: string[] = [];
 
@@ -463,13 +472,13 @@ export function ecij({
         // Otherwise, the original imports may be treated as being free of side-effects,
         // leading those imports to be omitted from the final bundle,
         // along with their extracted CSS.
-        for (const id of modulesWithSideEffects) {
+        for (const id of stylesheetDependencies) {
           importStatements.push(`import ${JSON.stringify(id)};\n`);
         }
 
         // use JSON.stringify to properly escape the module ID,
         // including \ delimiters on Windows.
-        importStatements.push(`import ${JSON.stringify(cssModuleId)}\n;`);
+        importStatements.push(`import ${JSON.stringify(cssModuleId)};\n`);
 
         const importStatement = importStatements.join('');
 
