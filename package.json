@@ -34,8 +34,8 @@
   ],
   "scripts": {
     "build": "rolldown -c",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
     "typecheck": "tsc --build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
@@ -43,7 +43,7 @@
   "devDependencies": {
     "@types/node": "^25.3.2",
     "@vitest/coverage-v8": "^4.0.18",
-    "prettier": "^3.8.1",
+    "oxfmt": "^0.35.0",
     "rolldown": "1.0.0-rc.5",
     "rolldown-plugin-dts": "^0.22.2",
     "typescript": "^5.9.3",
