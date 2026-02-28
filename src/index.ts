@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { relative } from 'node:path';
 import { cwd } from 'node:process';
-import { parseSync, Visitor, type TaggedTemplateExpression } from 'oxc-parser';
-import { makeIdFiltersToMatchWithQuery } from '@rolldown/pluginutils';
 import type { Plugin, TransformPluginContext } from 'rolldown';
+import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
+import { parseSync, Visitor } from 'rolldown/utils';
+import type { TaggedTemplateExpression } from '@oxc-project/types';
 
 export interface Configuration {
   /**
@@ -37,10 +38,7 @@ interface Declaration {
 interface ParsedFileInfo {
   readonly declarations: readonly Declaration[];
   readonly localIdentifiers: ReadonlyMap<string, string>;
-  readonly importedIdentifiers: ReadonlyMap<
-    string,
-    { source: string; imported: string }
-  >;
+  readonly importedIdentifiers: ReadonlyMap<string, { source: string; imported: string }>;
   readonly exportNameToValueMap: ReadonlyMap<string, string>;
 }
 
@@ -90,20 +88,15 @@ export function ecij({
     const relativePath = relative(PROJECT_ROOT, filePath).replaceAll('\\', '/');
 
     // Read the source file
-    const sourceText =
-      code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
+    const sourceText = code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
 
     const parseResult = parseSync(filePath, sourceText);
     const declarations: Declaration[] = [];
     const localIdentifiers = new Map<string, string>();
-    const importedIdentifiers = new Map<
-      string,
-      { source: string; imported: string }
-    >();
+    const importedIdentifiers = new Map<string, { source: string; imported: string }>();
     const exportNameToValueMap = new Map<string, string>();
     const localNameToExportedNameMap = new Map<string, string>();
-    const taggedTemplateExpressionFromVariableDeclarator =
-      new Set<TaggedTemplateExpression>();
+    const taggedTemplateExpressionFromVariableDeclarator = new Set<TaggedTemplateExpression>();
     let hasCSSTagImport = false;
 
     const parsedInfo: ParsedFileInfo = {
@@ -140,10 +133,7 @@ export function ecij({
         if (entry.importName.kind !== 'None') continue;
 
         // TODO: support default and namespace exports
-        if (
-          entry.exportName.kind === 'Name' &&
-          entry.localName.kind === 'Name'
-        ) {
+        if (entry.exportName.kind === 'Name' && entry.localName.kind === 'Name') {
           const localName = entry.localName.name!;
           const exportedName = entry.exportName.name!;
           localNameToExportedNameMap.set(localName, exportedName);
@@ -164,13 +154,7 @@ export function ecij({
       localName: string | undefined,
       node: TaggedTemplateExpression,
     ) {
-      if (
-        !(
-          hasCSSTagImport &&
-          node.tag.type === 'Identifier' &&
-          node.tag.name === 'css'
-        )
-      ) {
+      if (!(hasCSSTagImport && node.tag.type === 'Identifier' && node.tag.name === 'css')) {
         return;
       }
 
@@ -208,8 +192,7 @@ export function ecij({
           handleTaggedTemplateExpression(localName, node.init);
         } else if (
           node.init.type === 'Literal' &&
-          (typeof node.init.value === 'string' ||
-            typeof node.init.value === 'number')
+          (typeof node.init.value === 'string' || typeof node.init.value === 'number')
         ) {
           const value = String(node.init.value);
           recordIdentifierWithValue(localName, value);
@@ -243,8 +226,11 @@ export function ecij({
     cssContent: string;
     modulesWithSideEffects: Set<string>;
   }> {
-    const { declarations, localIdentifiers, importedIdentifiers } =
-      await parseFile(context, filePath, code);
+    const { declarations, localIdentifiers, importedIdentifiers } = await parseFile(
+      context,
+      filePath,
+      code,
+    );
 
     const cssExtractions: Array<{
       className: string;
@@ -259,9 +245,7 @@ export function ecij({
     const modulesWithSideEffects = new Set<string>();
 
     // Helper to resolve a value from an identifier
-    async function resolveValue(
-      identifierName: string,
-    ): Promise<string | undefined> {
+    async function resolveValue(identifierName: string): Promise<string | undefined> {
       // Check if it's a local identifier
       if (localIdentifiers.has(identifierName)) {
         return localIdentifiers.get(identifierName)!;
@@ -277,10 +261,7 @@ export function ecij({
         if (resolvedId != null) {
           const { id } = resolvedId;
 
-          const { declarations, exportNameToValueMap } = await parseFile(
-            context,
-            id,
-          );
+          const { declarations, exportNameToValueMap } = await parseFile(context, id);
 
           if (exportNameToValueMap.has(imported)) {
             if (declarations.length !== 0) {
@@ -295,10 +276,7 @@ export function ecij({
     }
 
     // Helper to add a processed CSS declaration
-    function addProcessedDeclaration(
-      declaration: Declaration,
-      cssContent: string,
-    ) {
+    function addProcessedDeclaration(declaration: Declaration, cssContent: string) {
       const { className, node } = declaration;
 
       cssExtractions.push({
@@ -423,10 +401,7 @@ export function ecij({
       // Ensure JS modules with CSS extractions are included,
       // otherwise they may be tree-shaken away if
       // all their exports are evaluated away
-      if (
-        parsedFileInfoCache.has(id) &&
-        parsedFileInfoCache.get(id)!.declarations.length !== 0
-      ) {
+      if (parsedFileInfoCache.has(id) && parsedFileInfoCache.get(id)!.declarations.length !== 0) {
         return id;
       }
 
@@ -460,12 +435,8 @@ export function ecij({
         const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
 
         // Extract CSS from the code
-        const {
-          transformedCode,
-          hasExtractions,
-          cssContent,
-          modulesWithSideEffects,
-        } = await extractCssFromCode(this, code, cleanId);
+        const { transformedCode, hasExtractions, cssContent, modulesWithSideEffects } =
+          await extractCssFromCode(this, code, cleanId);
 
         if (!hasExtractions) {
           return null;

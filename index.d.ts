@@ -14,7 +14,4 @@
  * const myClass = 'css-a1b2c3d4';
  * ```
  */
-export function css(
-  strings: TemplateStringsArray,
-  ...expressions: Array<string | number>
-): string;
+export function css(strings: TemplateStringsArray, ...expressions: Array<string | number>): string;
