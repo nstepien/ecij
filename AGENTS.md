@@ -23,6 +23,8 @@ Node 24+ is required.
 | Test            | `node --run test`          |
 | Test + coverage | `node --run test:coverage` |
 
+**Before pushing**, rebase onto the target branch so CI runs against the latest code and conflicts are caught early.
+
 **Before committing**, you must format the code, then run all checks and fix any failures:
 
 ```sh
