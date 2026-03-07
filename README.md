@@ -107,21 +107,21 @@ export interface Configuration {
    * Can be a string, RegExp, or array of strings/RegExp.
    * @default /\.[cm]?[jt]sx?$/
    */
-  include?: string | RegExp | ReadonlyArray<string | RegExp>;
+  include?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
    * Exclude patterns for files to skip.
    * Can be a string, RegExp, or array of strings/RegExp.
    * @default [/\/node_modules\//, /\.d\.ts$/]
    */
-  exclude?: string | RegExp | ReadonlyArray<string | RegExp>;
+  exclude?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
    * Prefix for generated CSS class names.
    * Should not be empty, as generated hashes may start with a digit, resulting in invalid CSS class names.
    * @default 'css-'
    */
-  classPrefix?: string;
+  classPrefix?: string | undefined | null;
 }
 ```
 
