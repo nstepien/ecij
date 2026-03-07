@@ -171,6 +171,5 @@ npm test -- -u
 ## TODO
 
 - Log CSS extraction failures
-- Scope handling
 - Full import/export handling (default/namespace import/export)
 - Sourcemaps
