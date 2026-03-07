@@ -74,7 +74,7 @@ The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite
 When updating behavior that changes output, update snapshots with:
 
 ```sh
-npx vitest -u
+node --run test -- -u
 ```
 
 ## CI
