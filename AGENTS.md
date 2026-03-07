@@ -39,7 +39,7 @@ CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compati
 ### Entry Points
 
 - `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that throws at runtime. This serves two purposes: it provides types for editor support, and it acts as a safety net — if the plugin is not configured, is misconfigured, or cannot statically extract a `css` call, the throw ensures broken styles fail loudly rather than silently shipping broken code.
-- `src/index.ts` → `dist/index.js` / `dist/index.d.ts` — Plugin export (`ecij/plugin`). The Rolldown/Vite plugin that performs static CSS extraction.
+- `src/index.ts` → `dist/index.js` / `dist/index.d.ts` — Plugin export (`ecij/plugin`). The Rolldown/Vite plugin that performs static CSS extraction. This single file contains the entire plugin implementation.
 
 ### Plugin Pipeline
 
@@ -65,7 +65,7 @@ Three `Map` caches exist within the plugin closure, all cleared in `buildEnd`:
 
 ## Code Style and Practices
 
-- **Formatter**: oxfmt. Run `node --run format` to auto-fix. Configuration is in `.oxfmtrc.json`.
+- **Formatter**: oxfmt. Configuration is in `.oxfmtrc.json`.
 - **TypeScript**: Strict mode is enabled. Use `import type` for type-only imports. See `tsconfig.base.json` for the full compiler configuration.
 - **Naming**: camelCase for variables/functions, PascalCase for interfaces, SCREAMING_SNAKE_CASE for module-level constants.
 - **Module format**: ESM only.
@@ -76,7 +76,7 @@ Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtur
 
 The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`.
 
-When updating behavior that changes output, update snapshots with:
+If your changes alter the build output, tests will fail with snapshot mismatches. Review the diff to confirm it matches your intent, then update snapshots with:
 
 ```sh
 node --run test -- -u
