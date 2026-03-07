@@ -14,14 +14,13 @@ Node 24+ is required.
 
 ## Commands
 
-| Task            | Command                    |
-| --------------- | -------------------------- |
-| Build           | `node --run build`         |
-| Type check      | `node --run typecheck`     |
-| Format check    | `node --run format:check`  |
-| Format (fix)    | `node --run format`        |
-| Test            | `node --run test`          |
-| Test + coverage | `node --run test:coverage` |
+| Task         | Command                   |
+| ------------ | ------------------------- |
+| Build        | `node --run build`        |
+| Type check   | `node --run typecheck`    |
+| Format check | `node --run format:check` |
+| Format (fix) | `node --run format`       |
+| Test         | `node --run test`         |
 
 **Before pushing**, merge the target branch into your branch to ensure you're working with up-to-date code, conflicts are caught early, and reviewers see accurate diffs.
 
