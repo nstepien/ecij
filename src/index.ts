@@ -428,8 +428,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     transform: {
       filter: {
         id: {
-          include: makeIdFiltersToMatchWithQuery(include ?? JS_TS_FILE_REGEX),
-          exclude: makeIdFiltersToMatchWithQuery(exclude ?? [NODE_MODULES_REGEX, D_TS_FILE_REGEX]),
+          include: makeIdFiltersToMatchWithQuery(include),
+          exclude: makeIdFiltersToMatchWithQuery(exclude),
         },
       },
       async handler(code, id) {
