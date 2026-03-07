@@ -69,6 +69,7 @@ Three `Map` caches exist within the plugin closure, all cleared in `buildEnd`:
 - **TypeScript**: Strict mode is enabled. Use `import type` for type-only imports. See `tsconfig.base.json` for the full compiler configuration.
 - **Naming**: camelCase for variables/functions, PascalCase for interfaces, SCREAMING_SNAKE_CASE for module-level constants.
 - **Module format**: ESM only.
+- **Documentation**: If your changes affect documented behavior, update `README.md` and `AGENTS.md` to match.
 
 ## Testing
 
