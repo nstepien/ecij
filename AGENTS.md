@@ -23,11 +23,13 @@ Node 24+ is required.
 | Test             | `node --run test`           |
 | Test + coverage  | `node --run test:coverage`  |
 
-Run all checks before submitting changes. CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compatible (e.g., path handling).
+**Before committing**, you must format the code, then run all checks and fix any failures:
 
 ```sh
-node --run format:check && node --run typecheck && node --run build && node --run test
+node --run format && node --run typecheck && node --run build && node --run test
 ```
+
+CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compatible (e.g., path handling).
 
 ## Architecture
 
