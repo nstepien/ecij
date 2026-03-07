@@ -29,15 +29,20 @@ export interface Configuration {
   classPrefix?: string;
 }
 
+interface Scope {
+  identifiers: Map<string, string>;
+  parent: Scope | null;
+}
+
 interface Declaration {
   className: string;
   node: TaggedTemplateExpression;
   hasInterpolations: boolean;
+  scope: Scope;
 }
 
 interface ParsedFileInfo {
   readonly declarations: readonly Declaration[];
-  readonly localIdentifiers: ReadonlyMap<string, string>;
   readonly importedIdentifiers: ReadonlyMap<string, { source: string; imported: string }>;
   readonly exportNameToValueMap: ReadonlyMap<string, string>;
 }
@@ -96,16 +101,18 @@ export function ecij({
 
     const parseResult = parseSync(filePath, sourceText);
     const declarations: Declaration[] = [];
-    const localIdentifiers = new Map<string, string>();
     const importedIdentifiers = new Map<string, { source: string; imported: string }>();
     const exportNameToValueMap = new Map<string, string>();
     const localNameToExportedNameMap = new Map<string, string>();
     const taggedTemplateExpressionFromVariableDeclarator = new Set<TaggedTemplateExpression>();
     let hasCSSTagImport = false;
 
+    // Scope tracking: root scope for module-level declarations
+    const rootScope: Scope = { identifiers: new Map(), parent: null };
+    let currentScope = rootScope;
+
     const parsedInfo: ParsedFileInfo = {
       declarations,
-      localIdentifiers,
       importedIdentifiers,
       exportNameToValueMap,
     };
@@ -146,9 +153,10 @@ export function ecij({
     }
 
     function recordIdentifierWithValue(localName: string, value: string) {
-      localIdentifiers.set(localName, value);
+      currentScope.identifiers.set(localName, value);
 
-      if (localNameToExportedNameMap.has(localName)) {
+      // Only record exports for module-level (root scope) declarations
+      if (currentScope === rootScope && localNameToExportedNameMap.has(localName)) {
         const exportedName = localNameToExportedNameMap.get(localName)!;
         exportNameToValueMap.set(exportedName, value);
       }
@@ -176,6 +184,7 @@ export function ecij({
         className,
         node,
         hasInterpolations: node.quasi.expressions.length !== 0,
+        scope: currentScope,
       });
 
       // Record generated class names for css declarations
@@ -186,6 +195,14 @@ export function ecij({
 
     // Visit AST to collect declarations and literal values
     const visitor = new Visitor({
+      BlockStatement() {
+        currentScope = { identifiers: new Map(), parent: currentScope };
+      },
+
+      'BlockStatement:exit'() {
+        currentScope = currentScope.parent!;
+      },
+
       VariableDeclarator(node) {
         if (node.init === null || node.id.type !== 'Identifier') return;
 
@@ -230,7 +247,7 @@ export function ecij({
     cssContent: string;
     stylesheetDependencies: Set<string>;
   }> {
-    const { declarations, localIdentifiers, importedIdentifiers } = await parseFile(
+    const { declarations, importedIdentifiers } = await parseFile(
       context,
       filePath,
       code,
@@ -248,11 +265,18 @@ export function ecij({
     }> = [];
     const stylesheetDependencies = new Set<string>();
 
-    // Helper to resolve a value from an identifier
-    async function resolveValue(identifierName: string): Promise<string | undefined> {
-      // Check if it's a local identifier
-      if (localIdentifiers.has(identifierName)) {
-        return localIdentifiers.get(identifierName)!;
+    // Helper to resolve a value from an identifier, walking up the scope chain
+    async function resolveValue(
+      identifierName: string,
+      scope: Scope,
+    ): Promise<string | undefined> {
+      // Walk up the scope chain to find the identifier
+      let s: Scope | null = scope;
+      while (s !== null) {
+        if (s.identifiers.has(identifierName)) {
+          return s.identifiers.get(identifierName)!;
+        }
+        s = s.parent;
       }
 
       // Check if it's an imported identifier
@@ -330,7 +354,7 @@ export function ecij({
           }
 
           const identifierName = expression.name;
-          const resolvedValue = await resolveValue(identifierName);
+          const resolvedValue = await resolveValue(identifierName, declaration.scope);
 
           if (resolvedValue === undefined) {
             // Cannot resolve - skip this entire css`` block
