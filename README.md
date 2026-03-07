@@ -161,15 +161,13 @@ The project uses **integration tests** with **inline snapshot testing** to valid
 # Run tests once
 npm test
 
-# Run tests with coverage
-npm run test:coverage
-
 # Update inline snapshots after intentional changes
 npm test -- -u
 ```
 
 ## TODO
 
+- enable `noUncheckedIndexedAccess`
 - Log CSS extraction failures
 - Scope handling
 - Full import/export handling (default/namespace import/export)

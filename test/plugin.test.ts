@@ -1,13 +1,12 @@
 import { build } from 'vite';
 import { expect, test } from 'vitest';
-import { ecij, type Configuration } from '../src/index';
+import { ecij, type Configuration } from 'ecij/plugin';
 
 // Helper to run a vite build with the ecij plugin
 async function buildWithPlugin(entry: string, pluginOptions?: Configuration) {
   const output = await build({
     build: {
       lib: {
-        name: 'test',
         entry,
         formats: ['es'],
       },
@@ -15,7 +14,7 @@ async function buildWithPlugin(entry: string, pluginOptions?: Configuration) {
       write: false,
     },
     plugins: [ecij(pluginOptions)],
-    logLevel: 'silent',
+    logLevel: 'warn',
   });
 
   if (!Array.isArray(output)) {
