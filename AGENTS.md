@@ -49,20 +49,6 @@ The plugin implements three Rolldown lifecycle hooks:
 2. **`resolveId`** — Recognizes virtual CSS module IDs (e.g., `Button.tsx.<hash>.css`) and marks source files with CSS extractions as having side effects.
 3. **`load`** — Returns the extracted CSS content for virtual CSS module IDs.
 
-### Key Internal Functions
-
-- `parseFile()` — Single-pass AST visitor that collects `css` tag declarations, local identifier values, import/export mappings. Results are cached per file path.
-- `extractCssFromCode()` — Two-pass extraction: first processes declarations without interpolations, then resolves interpolations from local/imported identifiers. Skips blocks with unresolvable or complex expressions.
-- `hashText()` — MD5-based hash (8-char hex) used for generating deterministic class names from `<relative-path>:<index>:<variable-name>`.
-
-### Caching
-
-Three `Map` caches exist within the plugin closure, all cleared in `buildEnd`:
-
-- `parsedFileInfoCache` — Parsed AST info per file
-- `extractedCssPerFile` — Virtual CSS module content (keyed by virtual module ID)
-- `stylesheetImportPerFile` — Maps source file IDs to their generated CSS module IDs
-
 ## Code Style and Practices
 
 - **Formatter**: oxfmt. Configuration is in `.oxfmtrc.json`.
