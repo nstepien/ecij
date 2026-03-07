@@ -16,24 +16,24 @@ Node 24+ is required.
 
 | Task             | Command                  |
 | ---------------- | ------------------------ |
-| Build            | `npm run build`          |
-| Type check       | `npm run typecheck`      |
-| Format check     | `npm run format:check`   |
-| Format (fix)     | `npm run format`         |
-| Test             | `npm test`               |
-| Test + coverage  | `npm run test:coverage`  |
+| Build            | `node --run build`          |
+| Type check       | `node --run typecheck`      |
+| Format check     | `node --run format:check`   |
+| Format (fix)     | `node --run format`         |
+| Test             | `node --run test`           |
+| Test + coverage  | `node --run test:coverage`  |
 
 Run all checks before submitting changes:
 
 ```sh
-npm run format:check && npm run typecheck && npm run build && npm test
+node --run format:check && node --run typecheck && node --run build && node --run test
 ```
 
 ## Architecture
 
 ### Entry Points
 
-- `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that throws at runtime; it exists only for type-checking and to be transformed away by the plugin.
+- `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that throws at runtime. This serves two purposes: it provides types for editor support, and it acts as a safety net — if the plugin is not configured, is misconfigured, or cannot statically extract a `css` call, the throw ensures broken styles fail loudly rather than silently shipping broken code.
 - `src/index.ts` → `dist/index.js` / `dist/index.d.ts` — Plugin export (`ecij/plugin`). The Rolldown/Vite plugin that performs static CSS extraction.
 
 ### Plugin Pipeline
@@ -58,13 +58,12 @@ Three `Map` caches exist within the plugin closure, all cleared in `buildEnd`:
 - `extractedCssPerFile` — Virtual CSS module content (keyed by virtual module ID)
 - `stylesheetImportPerFile` — Maps source file IDs to their generated CSS module IDs
 
-## Code Style
+## Code Style and Practices
 
-- **Formatter**: oxfmt with single quotes (`singleQuote: true` in `.oxfmtrc.json`). Run `npm run format` to auto-fix.
-- **TypeScript**: Strict mode with `exactOptionalPropertyTypes`, `isolatedDeclarations`, `verbatimModuleSyntax`, `noUnusedLocals`, and `noImplicitReturns` enabled. See `tsconfig.base.json`.
+- **Formatter**: oxfmt. Run `node --run format` to auto-fix. Configuration is in `.oxfmtrc.json`.
+- **TypeScript**: Strict mode is enabled. Use `import type` for type-only imports. See `tsconfig.base.json` for the full compiler configuration.
 - **Naming**: camelCase for variables/functions, PascalCase for interfaces, SCREAMING_SNAKE_CASE for module-level constants.
-- **Imports**: Use `import type` for type-only imports (`verbatimModuleSyntax` enforces this).
-- **Module format**: ESM only (`"type": "module"` in package.json).
+- **Module format**: ESM only.
 
 ## Testing
 
@@ -75,9 +74,9 @@ The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite
 When updating behavior that changes output, update snapshots with:
 
 ```sh
-npm test -- -u
+npx vitest -u
 ```
 
 ## CI
 
-GitHub Actions CI (`.github/workflows/ci.yml`) runs on push to `main` and on pull requests. Matrix: Ubuntu + Windows, Node 24 + 25. Steps: format check → type check → build → test.
+All checks (format, typecheck, build, test) must pass. CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compatible (e.g., path handling).
