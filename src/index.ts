@@ -3,8 +3,11 @@ import { relative } from 'node:path';
 import { cwd } from 'node:process';
 import type { Plugin, TransformPluginContext } from 'rolldown';
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
-import { parseSync, Visitor } from 'rolldown/utils';
-import type { TaggedTemplateExpression } from '@oxc-project/types';
+import { parseSync, Visitor, type VisitorObject } from 'rolldown/utils';
+
+type TaggedTemplateExpression = Parameters<
+  NonNullable<VisitorObject['TaggedTemplateExpression']>
+>[0];
 
 export interface Configuration {
   /**
@@ -247,11 +250,7 @@ export function ecij({
     cssContent: string;
     stylesheetDependencies: Set<string>;
   }> {
-    const { declarations, importedIdentifiers } = await parseFile(
-      context,
-      filePath,
-      code,
-    );
+    const { declarations, importedIdentifiers } = await parseFile(context, filePath, code);
 
     const cssExtractions: Array<{
       className: string;
@@ -266,10 +265,7 @@ export function ecij({
     const stylesheetDependencies = new Set<string>();
 
     // Helper to resolve a value from an identifier, walking up the scope chain
-    async function resolveValue(
-      identifierName: string,
-      scope: Scope,
-    ): Promise<string | undefined> {
+    async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
       // Walk up the scope chain to find the identifier
       let s: Scope | null = scope;
       while (s !== null) {
