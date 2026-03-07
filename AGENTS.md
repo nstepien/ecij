@@ -14,14 +14,14 @@ Node 24+ is required.
 
 ## Commands
 
-| Task             | Command                  |
-| ---------------- | ------------------------ |
-| Build            | `node --run build`          |
-| Type check       | `node --run typecheck`      |
-| Format check     | `node --run format:check`   |
-| Format (fix)     | `node --run format`         |
-| Test             | `node --run test`           |
-| Test + coverage  | `node --run test:coverage`  |
+| Task            | Command                    |
+| --------------- | -------------------------- |
+| Build           | `node --run build`         |
+| Type check      | `node --run typecheck`     |
+| Format check    | `node --run format:check`  |
+| Format (fix)    | `node --run format`        |
+| Test            | `node --run test`          |
+| Test + coverage | `node --run test:coverage` |
 
 **Before committing**, you must format the code, then run all checks and fix any failures:
 
