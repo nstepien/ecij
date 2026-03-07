@@ -55,7 +55,7 @@ The plugin implements three Rolldown lifecycle hooks:
 - **TypeScript**: Strict mode is enabled. Use `import type` for type-only imports. See `tsconfig.base.json` for the shared compiler configuration.
 - **Naming**: camelCase for variables/functions, PascalCase for interfaces, SCREAMING_SNAKE_CASE for module-level constants.
 - **Module format**: ESM only.
-- **Documentation**: Keep `README.md` and `AGENTS.md` updated when making significant structural changes (new entry points, changed commands, new conventions).
+- **Documentation**: Keep `README.md` and `AGENTS.md` in sync with the codebase.
 
 ## Testing
 
