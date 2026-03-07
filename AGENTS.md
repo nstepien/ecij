@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-ecij (Extract CSS-in-JS) is a zero-runtime CSS-in-JS plugin for Rolldown and Vite. It statically extracts `css` tagged template literals into separate CSS files at build time using AST-based analysis via oxc-parser. The runtime export (`index.js`) is a stub that throws if called — all `css` calls must be transformed away by the plugin at build time.
+ecij (Extract CSS-in-JS) is a zero-runtime CSS-in-JS plugin for Rolldown and Vite. It statically extracts `css` tagged template literals into separate CSS files at build time.
 
 ## Setup
 
@@ -23,7 +23,7 @@ Node 24+ is required.
 | Test             | `node --run test`           |
 | Test + coverage  | `node --run test:coverage`  |
 
-Run all checks before submitting changes:
+Run all checks before submitting changes. CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compatible (e.g., path handling).
 
 ```sh
 node --run format:check && node --run typecheck && node --run build && node --run test
@@ -76,7 +76,3 @@ When updating behavior that changes output, update snapshots with:
 ```sh
 node --run test -- -u
 ```
-
-## CI
-
-All checks (format, typecheck, build, test) must pass. CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compatible (e.g., path handling).
