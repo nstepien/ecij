@@ -3,11 +3,8 @@ import { relative } from 'node:path';
 import { cwd } from 'node:process';
 import type { Plugin, TransformPluginContext } from 'rolldown';
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
-import { parseSync, Visitor, type VisitorObject } from 'rolldown/utils';
-
-type TaggedTemplateExpression = Parameters<
-  NonNullable<VisitorObject['TaggedTemplateExpression']>
->[0];
+import { parseSync, Visitor } from 'rolldown/utils';
+import type { TaggedTemplateExpression } from '@oxc-project/types';
 
 export interface Configuration {
   /**
