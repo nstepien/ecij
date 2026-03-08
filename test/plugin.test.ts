@@ -430,102 +430,156 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
   const fixturePath = './test/fixtures/scoping-advanced.input.ts';
   const result = await buildWithPlugin(fixturePath);
 
-  // --- Function parameter shadowing ---
-  // When a function param shadows a module variable, we can't resolve
-  // the param value at build time → css`` should NOT be extracted
+  expect(result.js).toMatchInlineSnapshot(`
+    "function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    function paramShadow(color) {
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    const arrowParamShadow = (color) => {
+    	return css\`
+        color: \${color};
+      \`;
+    };
+    const arrowExprParam = (color) => css\`
+        color: \${color};
+      \`;
+    function paramPartialShadow(color) {
+    	return "css-72a8e6d6";
+    }
+    function forOfShadow() {
+    	for (const color of ["blue", "green"]) console.log(css\`
+            color: \${color};
+          \`);
+    	return "css-6243fe14";
+    }
+    function forInShadow() {
+    	for (const color in { blue: 1 }) console.log(css\`
+            color: \${color};
+          \`);
+    	return "css-330916ac";
+    }
+    function catchShadow() {
+    	try {
+    		throw new Error();
+    	} catch (color) {
+    		console.log(css\`
+            color: \${color};
+          \`);
+    	}
+    	return "css-a30d4f0f";
+    }
+    function letNoInit() {
+    	return css\`
+        color: \${"dynamic"};
+      \`;
+    }
+    function nonLiteralInit() {
+    	return css\`
+        color: \${String("blue")};
+      \`;
+    }
+    function defaultParam(color = "blue") {
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function forStatementShadow() {
+    	for (let color = "blue"; color !== "done"; color = "done") console.log("css-c7155baa");
+    	return "css-f19ded5e";
+    }
+    var MyClass = class MyClass {
+    	static style;
+    	static {
+    		MyClass.style = "css-5f19011e";
+    	}
+    };
+    function fnDeclShadow() {
+    	function color() {}
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function classDeclShadow() {
+    	class color {}
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function fnExprName() {
+    	return "css-c8fe0069";
+    }
+    function arrayDestructuring() {
+    	const [color] = ["blue"];
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function objectDestructuring() {
+    	const { color } = { color: "blue" };
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function forOfDestructuring() {
+    	for (const [color] of [["blue"]]) console.log(css\`
+            color: \${color};
+          \`);
+    	return "css-3e927990";
+    }
+    function destructuredParam({ color }) {
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    const finalModuleCheck = "css-29db45ed";
+    export { MyClass, arrayDestructuring, arrowExprParam, arrowParamShadow, catchShadow, classDeclShadow, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonLiteralInit, objectDestructuring, paramPartialShadow, paramShadow };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-72a8e6d6 {
+      font-size: 16px;
+    }
 
-  // paramShadow(color) should keep css`` (not extracted to a string)
-  expect(result.js).toMatch(/function paramShadow\(color\)\s*\{[^}]*css`/);
+    .css-6243fe14 {
+      color: red;
+    }
 
-  // arrowParamShadow should keep css``
-  expect(result.js).toMatch(/arrowParamShadow.*=.*\(color\).*\{[^}]*css`/s);
+    .css-330916ac {
+      color: red;
+    }
 
-  // arrowExprParam (expression body) should keep css``
-  expect(result.js).toMatch(/arrowExprParam.*=.*\(color\).*css`/s);
+    .css-a30d4f0f {
+      color: red;
+    }
 
-  // defaultParam(color = 'blue') should keep css`` (param with default is still runtime)
-  expect(result.js).toMatch(/function defaultParam\(color.*\)\s*\{[^}]*css`/);
+    .css-c7155baa {
+      color: blue;
+    }
 
-  // --- Param does NOT affect non-shadowed variables ---
-  // paramPartialShadow has param 'color' but uses ${size}, which is NOT shadowed
-  // So the css block SHOULD be extracted (size resolves to '16px')
-  expect(result.js).toMatch(/function paramPartialShadow\(color\)\s*\{[^}]*return "css-/);
-  expect(result.css).toContain('font-size: 16px');
+    .css-f19ded5e {
+      color: red;
+    }
 
-  // --- For-of/for-in loop variable shadowing ---
-  // Inside the loop, css using the loop variable should NOT be extracted
-  // After the loop, module-level color should resolve to 'red'
+    .css-5f19011e {
+      color: purple;
+    }
 
-  // forOfShadow: inside loop should have css``
-  expect(result.js).toMatch(/for.*const color of.*css`/s);
-  // forOfShadow: return after loop should be extracted with color: red
-  expect(result.css).toMatch(/color: red/);
+    .css-c8fe0069 {
+      color: red;
+    }
 
-  // forInShadow: inside loop should have css``
-  expect(result.js).toMatch(/for.*const color in.*css`/s);
+    .css-3e927990 {
+      color: red;
+    }
 
-  // --- Catch parameter shadowing ---
-  // Inside catch, css using the catch param should NOT be extracted
-  expect(result.js).toMatch(/catch\s*\(color\)\s*\{[^}]*css`/);
-
-  // --- let without initializer ---
-  // let color; shadows module color → can't resolve → NOT extracted
-  expect(result.js).toMatch(/function letNoInit\(\)\s*\{[^}]*css`/);
-
-  // --- Non-literal init ---
-  // const color = String('blue') → can't resolve → NOT extracted
-  expect(result.js).toMatch(/function nonLiteralInit\(\)\s*\{[^}]*css`/);
-
-  // --- For-statement with literal init ---
-  // for (let color = 'blue'; ...) inside loop should resolve to 'blue'
-  // After loop return should resolve to module-level 'red'
-
-  // --- Static block scope isolation ---
-  // const color = 'purple' in static block should NOT leak to module scope
-  // The static block itself should extract with color: purple
-  expect(result.css).toContain('color: purple');
-
-  // --- Function declaration name shadows outer variable ---
-  // function color() {} inside a function creates a binding 'color' in the containing scope
-  expect(result.js).toMatch(/function fnDeclShadow\(\)[\s\S]*?css`/);
-
-  // --- Class declaration name shadows outer variable ---
-  // class color {} inside a function creates a binding 'color' in the containing scope
-  expect(result.js).toMatch(/function classDeclShadow\(\)[\s\S]*?css`/);
-
-  // --- Function expression name does NOT shadow in containing scope ---
-  // const fn = function color() {} — 'color' is only visible inside the function body
-  // So module-level color ('red') should still resolve
-  expect(result.js).toMatch(/function fnExprName\(\)\s*\{[^}]*return "css-/);
-
-  // --- Array destructuring shadows ---
-  // const [color] = [...] should shadow outer color
-  expect(result.js).toMatch(/function arrayDestructuring\(\)[\s\S]*?css`/);
-
-  // --- Object destructuring shadows ---
-  // const { color } = {...} should shadow outer color
-  expect(result.js).toMatch(/function objectDestructuring\(\)[\s\S]*?css`/);
-
-  // --- For-of with destructuring shadows inside loop ---
-  expect(result.js).toMatch(/for.*\[color\].*css`/s);
-  // After loop, module-level should resolve
-  expect(result.js).toMatch(/function forOfDestructuring\(\)[\s\S]*?return "css-/);
-
-  // --- Destructured function parameter ---
-  expect(result.js).toMatch(/function destructuredParam\([\s\S]*?css`/);
-
-  // --- Module-level final check ---
-  // After all the above, module-level color should still be 'red', NOT 'purple'
-  // finalModuleCheck should have color: red and font-size: 16px
-  expect(result.js).toMatch(/finalModuleCheck = "css-/);
-
-  // Verify the CSS for finalModuleCheck contains 'color: red' (not 'color: purple')
-  // This specifically tests that static block variables don't leak
-  // The last CSS block should be the finalModuleCheck with color: red
-  const cssBlocks = result.css!.split(/\}\s*\./);
-  const lastBlock = cssBlocks[cssBlocks.length - 1];
-  expect(lastBlock).toContain('color: red');
-  expect(lastBlock).toContain('font-size: 16px');
+    .css-29db45ed {
+      color: red;
+      font-size: 16px;
+    }/*$vite$:1*/"
+  `);
 });
 
 test('classPrefix setting', async () => {
