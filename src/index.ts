@@ -4,7 +4,7 @@ import { cwd } from 'node:process';
 import type { Plugin, TransformPluginContext } from 'rolldown';
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
 import { parseSync, Visitor } from 'rolldown/utils';
-import type { TaggedTemplateExpression } from '@oxc-project/types';
+import type { BlockStatement, TaggedTemplateExpression } from '@oxc-project/types';
 
 export interface Configuration {
   /**
@@ -204,7 +204,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     // When a parent node (function, for-statement, catch) already creates a scope,
     // the child BlockStatement should reuse it instead of creating a redundant nested scope.
-    const skippedBlockStatements = new Set<object>();
+    const skippedBlockStatements = new Set<BlockStatement>();
 
     function recordParams(params: import('@oxc-project/types').ParamPattern[]) {
       for (const param of params) {
@@ -238,7 +238,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       FunctionDeclaration(node) {
         pushScope();
         recordParams(node.params);
-        if (node.body !== null) {
+        if (node.body?.type === 'BlockStatement') {
           skippedBlockStatements.add(node.body);
         }
       },
@@ -247,7 +247,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       FunctionExpression(node) {
         pushScope();
         recordParams(node.params);
-        if (node.body !== null) {
+        if (node.body?.type === 'BlockStatement') {
           skippedBlockStatements.add(node.body);
         }
       },
@@ -256,8 +256,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       ArrowFunctionExpression(node) {
         pushScope();
         recordParams(node.params);
-        // Only skip if the body is a BlockStatement (not an expression body)
-        if (!node.expression) {
+        if (node.body.type === 'BlockStatement') {
           skippedBlockStatements.add(node.body);
         }
       },
@@ -313,27 +312,26 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
         const localName = node.id.name;
 
-        if (node.init === null) {
-          // Variable declared without initializer (e.g. `let x;`)
-          // Record it so it shadows outer variables
-          currentScope.identifiers.set(localName, undefined);
-          return;
+        switch (node.init?.type) {
+          case 'TaggedTemplateExpression':
+            if (node.init.tag.type === 'Identifier' && node.init.tag.name === 'css') {
+              taggedTemplateExpressionFromVariableDeclarator.add(node.init);
+              handleTaggedTemplateExpression(localName, node.init);
+              return;
+            }
+            break;
+
+          case 'Literal':
+            if (typeof node.init.value === 'string' || typeof node.init.value === 'number') {
+              const value = String(node.init.value);
+              recordIdentifierWithValue(localName, value);
+              return;
+            }
+            break;
         }
 
-        if (node.init.type === 'TaggedTemplateExpression') {
-          taggedTemplateExpressionFromVariableDeclarator.add(node.init);
-          handleTaggedTemplateExpression(localName, node.init);
-        } else if (
-          node.init.type === 'Literal' &&
-          (typeof node.init.value === 'string' || typeof node.init.value === 'number')
-        ) {
-          const value = String(node.init.value);
-          recordIdentifierWithValue(localName, value);
-        } else {
-          // Non-resolvable init (e.g. function call, object, etc.)
-          // Record it so it shadows outer variables
-          currentScope.identifiers.set(localName, undefined);
-        }
+        // Record as unknown value so it shadows outer variables
+        currentScope.identifiers.set(localName, undefined);
       },
 
       TaggedTemplateExpression(node) {
