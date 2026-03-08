@@ -263,13 +263,14 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     // Helper to resolve a value from an identifier, walking up the scope chain
     async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
+      if (scope.identifiers.has(identifierName)) {
+        return scope.identifiers.get(identifierName)!;
+      }
+
       // Walk up the scope chain to find the identifier
-      let s: Scope | null = scope;
-      while (s !== null) {
-        if (s.identifiers.has(identifierName)) {
-          return s.identifiers.get(identifierName)!;
-        }
-        s = s.parent;
+      const { parent } = scope;
+      if (parent !== null) {
+        return resolveValue(identifierName, parent);
       }
 
       // Check if it's an imported identifier
