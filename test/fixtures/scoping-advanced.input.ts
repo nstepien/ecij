@@ -193,7 +193,52 @@ export function fnExprName() {
 }
 
 // =============================================
-// 16. Module-level check: everything should still resolve
+// 16. Array destructuring shadows
+// =============================================
+export function arrayDestructuring() {
+  const [color] = ['blue'];
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 17. Object destructuring shadows
+// =============================================
+export function objectDestructuring() {
+  const { color } = { color: 'blue' };
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 18. For-of with array destructuring
+// =============================================
+export function forOfDestructuring() {
+  for (const [color] of [['blue']]) {
+    console.log(
+      css`
+        color: ${color};
+      `,
+    );
+  }
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 19. Destructured function parameter
+// =============================================
+export function destructuredParam({ color }: { color: string }) {
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 20. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};

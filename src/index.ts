@@ -206,17 +206,49 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // the child BlockStatement should reuse it instead of creating a redundant nested scope.
     const skippedBlockStatements = new Set<BlockStatement>();
 
+    // Recursively extract all binding identifiers from a pattern and record them
+    // as unknown values in the current scope (for shadowing).
+    function recordBindingPattern(pattern: import('@oxc-project/types').BindingPattern) {
+      switch (pattern.type) {
+        case 'Identifier':
+          currentScope.identifiers.set(pattern.name, undefined);
+          break;
+        case 'ObjectPattern':
+          for (const prop of pattern.properties) {
+            if (prop.type === 'RestElement') {
+              recordBindingPattern(prop.argument);
+            } else {
+              recordBindingPattern(prop.value);
+            }
+          }
+          break;
+        case 'ArrayPattern':
+          for (const element of pattern.elements) {
+            if (element === null) continue;
+            if (element.type === 'RestElement') {
+              recordBindingPattern(element.argument);
+            } else {
+              recordBindingPattern(element);
+            }
+          }
+          break;
+        case 'AssignmentPattern':
+          recordBindingPattern(pattern.left);
+          break;
+      }
+    }
+
     function recordParams(params: import('@oxc-project/types').ParamPattern[]) {
       for (const param of params) {
-        // FormalParameter extends BindingPattern, so it may be an Identifier directly
-        if (param.type === 'Identifier') {
-          currentScope.identifiers.set(param.name, undefined);
-        } else if (param.type === 'AssignmentPattern' && param.left.type === 'Identifier') {
-          // Default parameter: function foo(x = value)
-          currentScope.identifiers.set(param.left.name, undefined);
+        if (param.type === 'TSParameterProperty') {
+          recordBindingPattern(param.parameter);
+        } else if (param.type === 'RestElement') {
+          // Rest parameter: function foo(...args)
+          recordBindingPattern(param.argument);
+        } else {
+          // FormalParameter extends BindingPattern
+          recordBindingPattern(param);
         }
-        // ObjectPattern/ArrayPattern/RestElement destructuring params
-        // also shadow but are uncommon in css`` interpolations; skip for now
       }
     }
 
@@ -304,8 +336,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       // Catch clauses: create a scope for the catch parameter, merge with body BlockStatement
       CatchClause(node) {
         pushScope();
-        if (node.param !== null && node.param.type === 'Identifier') {
-          currentScope.identifiers.set(node.param.name, undefined);
+        if (node.param !== null) {
+          recordBindingPattern(node.param);
         }
         skippedBlockStatements.add(node.body);
       },
@@ -323,7 +355,11 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       'StaticBlock:exit': popScope,
 
       VariableDeclarator(node) {
-        if (node.id.type !== 'Identifier') return;
+        if (node.id.type !== 'Identifier') {
+          // Destructuring pattern: record all binding identifiers for shadowing
+          recordBindingPattern(node.id);
+          return;
+        }
 
         const localName = node.id.name;
 

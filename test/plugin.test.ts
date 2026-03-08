@@ -498,6 +498,22 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
   // So module-level color ('red') should still resolve
   expect(result.js).toMatch(/function fnExprName\(\)\s*\{[^}]*return "css-/);
 
+  // --- Array destructuring shadows ---
+  // const [color] = [...] should shadow outer color
+  expect(result.js).toMatch(/function arrayDestructuring\(\)[\s\S]*?css`/);
+
+  // --- Object destructuring shadows ---
+  // const { color } = {...} should shadow outer color
+  expect(result.js).toMatch(/function objectDestructuring\(\)[\s\S]*?css`/);
+
+  // --- For-of with destructuring shadows inside loop ---
+  expect(result.js).toMatch(/for.*\[color\].*css`/s);
+  // After loop, module-level should resolve
+  expect(result.js).toMatch(/function forOfDestructuring\(\)[\s\S]*?return "css-/);
+
+  // --- Destructured function parameter ---
+  expect(result.js).toMatch(/function destructuredParam\([\s\S]*?css`/);
+
   // --- Module-level final check ---
   // After all the above, module-level color should still be 'red', NOT 'purple'
   // finalModuleCheck should have color: red and font-size: 16px
