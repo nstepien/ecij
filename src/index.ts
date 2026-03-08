@@ -15,21 +15,21 @@ export interface Configuration {
    * Can be a string, RegExp, or array of strings/RegExp.
    * @default /\.[cm]?[jt]sx?$/
    */
-  include?: string | RegExp | ReadonlyArray<string | RegExp>;
+  include?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
    * Exclude patterns for files to skip.
    * Can be a string, RegExp, or array of strings/RegExp.
    * @default [/\/node_modules\//, /\.d\.ts$/]
    */
-  exclude?: string | RegExp | ReadonlyArray<string | RegExp>;
+  exclude?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
    * Prefix for generated CSS class names.
    * Should not be empty, as generated hashes may start with a digit, resulting in invalid CSS class names.
    * @default 'css-'
    */
-  classPrefix?: string;
+  classPrefix?: string | undefined | null;
 }
 
 interface Scope {
@@ -64,11 +64,11 @@ function hashText(text: string): string {
   return createHash('md5').update(text).digest('hex').slice(0, 8);
 }
 
-export function ecij({
-  include = JS_TS_FILE_REGEX,
-  exclude = [NODE_MODULES_REGEX, D_TS_FILE_REGEX],
-  classPrefix = 'css-',
-}: Configuration = {}): Plugin {
+export function ecij(configuration?: Configuration | undefined | null): Plugin {
+  const include = configuration?.include ?? JS_TS_FILE_REGEX;
+  const exclude = configuration?.exclude ?? [NODE_MODULES_REGEX, D_TS_FILE_REGEX];
+  const classPrefix = configuration?.classPrefix ?? 'css-';
+
   const parsedFileInfoCache = new Map<string, ParsedFileInfo>();
 
   // Map to store generated CSS module IDs for each source file, used to mark modules as having side effects

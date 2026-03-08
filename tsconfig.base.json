@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
     "composite": true,
     "emitDeclarationOnly": true,
     "erasableSyntaxOnly": true,
@@ -8,7 +7,6 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedDeclarations": true,
     "isolatedModules": true,
-    "jsx": "react-jsx",
     "lib": ["ESNext"],
     "libReplacement": false,
     "module": "esnext",

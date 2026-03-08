@@ -2,7 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "isolatedDeclarations": false,
-    "types": ["node"]
+    "paths": { "ecij/plugin": ["./src/index.ts"] }
   },
   "include": ["test/**/*"],
   "references": [{ "path": "tsconfig.src.json" }]
