@@ -426,6 +426,79 @@ test('variable scoping and shadowing', async () => {
   `);
 });
 
+test('advanced scoping: function parameters, for-of/in, catch, static blocks', async () => {
+  const fixturePath = './test/fixtures/scoping-advanced.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // --- Function parameter shadowing ---
+  // When a function param shadows a module variable, we can't resolve
+  // the param value at build time → css`` should NOT be extracted
+
+  // paramShadow(color) should keep css`` (not extracted to a string)
+  expect(result.js).toMatch(/function paramShadow\(color\)\s*\{[^}]*css`/);
+
+  // arrowParamShadow should keep css``
+  expect(result.js).toMatch(/arrowParamShadow.*=.*\(color\).*\{[^}]*css`/s);
+
+  // arrowExprParam (expression body) should keep css``
+  expect(result.js).toMatch(/arrowExprParam.*=.*\(color\).*css`/s);
+
+  // defaultParam(color = 'blue') should keep css`` (param with default is still runtime)
+  expect(result.js).toMatch(/function defaultParam\(color.*\)\s*\{[^}]*css`/);
+
+  // --- Param does NOT affect non-shadowed variables ---
+  // paramPartialShadow has param 'color' but uses ${size}, which is NOT shadowed
+  // So the css block SHOULD be extracted (size resolves to '16px')
+  expect(result.js).toMatch(/function paramPartialShadow\(color\)\s*\{[^}]*return "css-/);
+  expect(result.css).toContain('font-size: 16px');
+
+  // --- For-of/for-in loop variable shadowing ---
+  // Inside the loop, css using the loop variable should NOT be extracted
+  // After the loop, module-level color should resolve to 'red'
+
+  // forOfShadow: inside loop should have css``
+  expect(result.js).toMatch(/for.*const color of.*css`/s);
+  // forOfShadow: return after loop should be extracted with color: red
+  expect(result.css).toMatch(/color: red/);
+
+  // forInShadow: inside loop should have css``
+  expect(result.js).toMatch(/for.*const color in.*css`/s);
+
+  // --- Catch parameter shadowing ---
+  // Inside catch, css using the catch param should NOT be extracted
+  expect(result.js).toMatch(/catch\s*\(color\)\s*\{[^}]*css`/);
+
+  // --- let without initializer ---
+  // let color; shadows module color → can't resolve → NOT extracted
+  expect(result.js).toMatch(/function letNoInit\(\)\s*\{[^}]*css`/);
+
+  // --- Non-literal init ---
+  // const color = String('blue') → can't resolve → NOT extracted
+  expect(result.js).toMatch(/function nonLiteralInit\(\)\s*\{[^}]*css`/);
+
+  // --- For-statement with literal init ---
+  // for (let color = 'blue'; ...) inside loop should resolve to 'blue'
+  // After loop return should resolve to module-level 'red'
+
+  // --- Static block scope isolation ---
+  // const color = 'purple' in static block should NOT leak to module scope
+  // The static block itself should extract with color: purple
+  expect(result.css).toContain('color: purple');
+
+  // --- Module-level final check ---
+  // After all the above, module-level color should still be 'red', NOT 'purple'
+  // finalModuleCheck should have color: red and font-size: 16px
+  expect(result.js).toMatch(/finalModuleCheck = "css-/);
+
+  // Verify the CSS for finalModuleCheck contains 'color: red' (not 'color: purple')
+  // This specifically tests that static block variables don't leak
+  // The last CSS block should be the finalModuleCheck with color: red
+  const cssBlocks = result.css!.split(/\}\s*\./);
+  const lastBlock = cssBlocks[cssBlocks.length - 1];
+  expect(lastBlock).toContain('color: red');
+  expect(lastBlock).toContain('font-size: 16px');
+});
+
 test('classPrefix setting', async () => {
   const fixturePath = './test/fixtures/basic.input.ts';
   const result = await buildWithPlugin(fixturePath, {

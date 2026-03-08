@@ -30,7 +30,8 @@ export interface Configuration {
 }
 
 interface Scope {
-  identifiers: Map<string, string>;
+  // undefined value means "declared but value unknown at build time" (e.g. function params)
+  identifiers: Map<string, string | undefined>;
   parent: Scope | null;
 }
 
@@ -201,42 +202,129 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       currentScope = currentScope.parent!;
     }
 
+    // When a parent node (function, for-statement, catch) already creates a scope,
+    // the child BlockStatement should reuse it instead of creating a redundant nested scope.
+    let skipNextBlockScope = false;
+    // Track whether each BlockStatement created its own scope (for correct exit behavior)
+    const blockScopeCreated: boolean[] = [];
+
+    function recordParams(params: import('@oxc-project/types').ParamPattern[]) {
+      for (const param of params) {
+        // FormalParameter extends BindingPattern, so it may be an Identifier directly
+        if (param.type === 'Identifier') {
+          currentScope.identifiers.set(param.name, undefined);
+        } else if (param.type === 'AssignmentPattern' && param.left.type === 'Identifier') {
+          // Default parameter: function foo(x = value)
+          currentScope.identifiers.set(param.left.name, undefined);
+        }
+        // ObjectPattern/ArrayPattern/RestElement destructuring params
+        // also shadow but are uncommon in css`` interpolations; skip for now
+      }
+    }
+
     // Visit AST to collect declarations and literal values
     const visitor = new Visitor({
-      // Block statements create a new scope for let/const declarations
-      BlockStatement: pushScope,
-      'BlockStatement:exit': popScope,
+      BlockStatement() {
+        if (skipNextBlockScope) {
+          skipNextBlockScope = false;
+          blockScopeCreated.push(false);
+        } else {
+          pushScope();
+          blockScopeCreated.push(true);
+        }
+      },
 
-      // For statements create a scope for loop variable declarations
-      // that wraps the body's BlockStatement scope
-      ForStatement: pushScope,
+      'BlockStatement:exit'() {
+        if (blockScopeCreated.pop()) {
+          popScope();
+        }
+      },
+
+      // Functions: create a scope for parameters and merge with the body's BlockStatement
+      FunctionDeclaration(node) {
+        pushScope();
+        recordParams(node.params);
+        if (node.body !== null) {
+          skipNextBlockScope = true;
+        }
+      },
+      'FunctionDeclaration:exit': popScope,
+
+      FunctionExpression(node) {
+        pushScope();
+        recordParams(node.params);
+        if (node.body !== null) {
+          skipNextBlockScope = true;
+        }
+      },
+      'FunctionExpression:exit': popScope,
+
+      ArrowFunctionExpression(node) {
+        pushScope();
+        recordParams(node.params);
+        // Only skip if the body is a BlockStatement (not an expression body)
+        if (!node.expression) {
+          skipNextBlockScope = true;
+        }
+      },
+      'ArrowFunctionExpression:exit': popScope,
+
+      // For statements: create a scope for loop variable declarations,
+      // merge with the body's BlockStatement
+      ForStatement(node) {
+        pushScope();
+        if (node.body.type === 'BlockStatement') {
+          skipNextBlockScope = true;
+        }
+      },
       'ForStatement:exit': popScope,
-      ForInStatement: pushScope,
+
+      ForInStatement(node) {
+        pushScope();
+        if (node.body.type === 'BlockStatement') {
+          skipNextBlockScope = true;
+        }
+      },
       'ForInStatement:exit': popScope,
-      ForOfStatement: pushScope,
+
+      ForOfStatement(node) {
+        pushScope();
+        if (node.body.type === 'BlockStatement') {
+          skipNextBlockScope = true;
+        }
+      },
       'ForOfStatement:exit': popScope,
 
-      // Switch statements create a scope for case-level declarations
+      // Switch statements create a scope for case-level declarations.
+      // SwitchCase consequent is Array<Statement>, not a BlockStatement, so no merge needed.
       SwitchStatement: pushScope,
       'SwitchStatement:exit': popScope,
 
-      // Catch clauses create a scope for the catch parameter
-      CatchClause: pushScope,
+      // Catch clauses: create a scope for the catch parameter, merge with body BlockStatement
+      CatchClause(node) {
+        pushScope();
+        if (node.param !== null && node.param.type === 'Identifier') {
+          currentScope.identifiers.set(node.param.name, undefined);
+        }
+        skipNextBlockScope = true;
+      },
       'CatchClause:exit': popScope,
 
-      // Functions create a scope for their parameters
-      // (the body's BlockStatement will create an inner scope)
-      FunctionDeclaration: pushScope,
-      'FunctionDeclaration:exit': popScope,
-      FunctionExpression: pushScope,
-      'FunctionExpression:exit': popScope,
-      ArrowFunctionExpression: pushScope,
-      'ArrowFunctionExpression:exit': popScope,
+      // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement")
+      StaticBlock: pushScope,
+      'StaticBlock:exit': popScope,
 
       VariableDeclarator(node) {
-        if (node.init === null || node.id.type !== 'Identifier') return;
+        if (node.id.type !== 'Identifier') return;
 
         const localName = node.id.name;
+
+        if (node.init === null) {
+          // Variable declared without initializer (e.g. `let x;`)
+          // Record it so it shadows outer variables
+          currentScope.identifiers.set(localName, undefined);
+          return;
+        }
 
         if (node.init.type === 'TaggedTemplateExpression') {
           taggedTemplateExpressionFromVariableDeclarator.add(node.init);
@@ -247,6 +335,10 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         ) {
           const value = String(node.init.value);
           recordIdentifierWithValue(localName, value);
+        } else {
+          // Non-resolvable init (e.g. function call, object, etc.)
+          // Record it so it shadows outer variables
+          currentScope.identifiers.set(localName, undefined);
         }
       },
 
@@ -294,7 +386,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // Helper to resolve a value from an identifier, walking up the scope chain
     async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
       if (scope.identifiers.has(identifierName)) {
-        return scope.identifiers.get(identifierName)!;
+        // May return undefined for declarations with unknown values (e.g. function params),
+        // which stops the lookup and signals "can't resolve"
+        return scope.identifiers.get(identifierName);
       }
 
       // Walk up the scope chain to find the identifier
