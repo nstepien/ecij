@@ -204,9 +204,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     // When a parent node (function, for-statement, catch) already creates a scope,
     // the child BlockStatement should reuse it instead of creating a redundant nested scope.
-    let skipNextBlockScope = false;
-    // Track whether each BlockStatement created its own scope (for correct exit behavior)
-    const blockScopeCreated: boolean[] = [];
+    const skippedBlockStatements = new Set<object>();
 
     function recordParams(params: import('@oxc-project/types').ParamPattern[]) {
       for (const param of params) {
@@ -224,18 +222,14 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     // Visit AST to collect declarations and literal values
     const visitor = new Visitor({
-      BlockStatement() {
-        if (skipNextBlockScope) {
-          skipNextBlockScope = false;
-          blockScopeCreated.push(false);
-        } else {
+      BlockStatement(node) {
+        if (!skippedBlockStatements.has(node)) {
           pushScope();
-          blockScopeCreated.push(true);
         }
       },
 
-      'BlockStatement:exit'() {
-        if (blockScopeCreated.pop()) {
+      'BlockStatement:exit'(node) {
+        if (!skippedBlockStatements.has(node)) {
           popScope();
         }
       },
@@ -245,7 +239,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         pushScope();
         recordParams(node.params);
         if (node.body !== null) {
-          skipNextBlockScope = true;
+          skippedBlockStatements.add(node.body);
         }
       },
       'FunctionDeclaration:exit': popScope,
@@ -254,7 +248,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         pushScope();
         recordParams(node.params);
         if (node.body !== null) {
-          skipNextBlockScope = true;
+          skippedBlockStatements.add(node.body);
         }
       },
       'FunctionExpression:exit': popScope,
@@ -264,7 +258,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         recordParams(node.params);
         // Only skip if the body is a BlockStatement (not an expression body)
         if (!node.expression) {
-          skipNextBlockScope = true;
+          skippedBlockStatements.add(node.body);
         }
       },
       'ArrowFunctionExpression:exit': popScope,
@@ -274,7 +268,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       ForStatement(node) {
         pushScope();
         if (node.body.type === 'BlockStatement') {
-          skipNextBlockScope = true;
+          skippedBlockStatements.add(node.body);
         }
       },
       'ForStatement:exit': popScope,
@@ -282,7 +276,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       ForInStatement(node) {
         pushScope();
         if (node.body.type === 'BlockStatement') {
-          skipNextBlockScope = true;
+          skippedBlockStatements.add(node.body);
         }
       },
       'ForInStatement:exit': popScope,
@@ -290,7 +284,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       ForOfStatement(node) {
         pushScope();
         if (node.body.type === 'BlockStatement') {
-          skipNextBlockScope = true;
+          skippedBlockStatements.add(node.body);
         }
       },
       'ForOfStatement:exit': popScope,
@@ -306,7 +300,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         if (node.param !== null && node.param.type === 'Identifier') {
           currentScope.identifiers.set(node.param.name, undefined);
         }
-        skipNextBlockScope = true;
+        skippedBlockStatements.add(node.body);
       },
       'CatchClause:exit': popScope,
 
