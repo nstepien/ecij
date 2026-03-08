@@ -485,6 +485,19 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
   // The static block itself should extract with color: purple
   expect(result.css).toContain('color: purple');
 
+  // --- Function declaration name shadows outer variable ---
+  // function color() {} inside a function creates a binding 'color' in the containing scope
+  expect(result.js).toMatch(/function fnDeclShadow\(\)[\s\S]*?css`/);
+
+  // --- Class declaration name shadows outer variable ---
+  // class color {} inside a function creates a binding 'color' in the containing scope
+  expect(result.js).toMatch(/function classDeclShadow\(\)[\s\S]*?css`/);
+
+  // --- Function expression name does NOT shadow in containing scope ---
+  // const fn = function color() {} — 'color' is only visible inside the function body
+  // So module-level color ('red') should still resolve
+  expect(result.js).toMatch(/function fnExprName\(\)\s*\{[^}]*return "css-/);
+
   // --- Module-level final check ---
   // After all the above, module-level color should still be 'red', NOT 'purple'
   // finalModuleCheck should have color: red and font-size: 16px

@@ -234,8 +234,12 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         }
       },
 
-      // Functions: create a scope for parameters and merge with the body's BlockStatement
+      // Functions: create a scope for parameters and merge with the body's BlockStatement.
+      // FunctionDeclaration names are bound in the containing scope (before pushScope).
       FunctionDeclaration(node) {
+        if (node.id !== null) {
+          currentScope.identifiers.set(node.id.name, undefined);
+        }
         pushScope();
         recordParams(node.params);
         if (node.body?.type === 'BlockStatement') {
@@ -244,8 +248,12 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       },
       'FunctionDeclaration:exit': popScope,
 
+      // FunctionExpression names are only visible inside the function body (for recursion).
       FunctionExpression(node) {
         pushScope();
+        if (node.id !== null) {
+          currentScope.identifiers.set(node.id.name, undefined);
+        }
         recordParams(node.params);
         if (node.body?.type === 'BlockStatement') {
           skippedBlockStatements.add(node.body);
@@ -302,6 +310,13 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         skippedBlockStatements.add(node.body);
       },
       'CatchClause:exit': popScope,
+
+      // Class declaration names are bound in the containing scope (like function declarations).
+      ClassDeclaration(node) {
+        if (node.id !== null) {
+          currentScope.identifiers.set(node.id.name, undefined);
+        }
+      },
 
       // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement")
       StaticBlock: pushScope,

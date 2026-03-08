@@ -158,7 +158,42 @@ export class MyClass {
 }
 
 // =============================================
-// 13. Module-level check: everything should still resolve
+// 13. Function declaration name shadows outer variable
+// =============================================
+export function fnDeclShadow() {
+  function color() {}
+  // color is now a function declaration name → shadows module-level → NOT extracted
+  return css`
+    color: ${color as unknown as string};
+  `;
+}
+
+// =============================================
+// 14. Class declaration name shadows outer variable
+// =============================================
+export function classDeclShadow() {
+  class color {}
+  return css`
+    color: ${color as unknown as string};
+  `;
+}
+
+// =============================================
+// 15. Function expression name does NOT shadow in containing scope
+// =============================================
+export function fnExprName() {
+  const fn = function color() {};
+  void fn;
+  // The name 'color' from a function expression is only visible inside
+  // the function body, not in the containing scope.
+  // So module-level color ('red') should still resolve here.
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 16. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
