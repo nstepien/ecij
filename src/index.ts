@@ -193,15 +193,45 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       }
     }
 
+    function pushScope() {
+      currentScope = { identifiers: new Map(), parent: currentScope };
+    }
+
+    function popScope() {
+      currentScope = currentScope.parent!;
+    }
+
     // Visit AST to collect declarations and literal values
     const visitor = new Visitor({
-      BlockStatement() {
-        currentScope = { identifiers: new Map(), parent: currentScope };
-      },
+      // Block statements create a new scope for let/const declarations
+      BlockStatement: pushScope,
+      'BlockStatement:exit': popScope,
 
-      'BlockStatement:exit'() {
-        currentScope = currentScope.parent!;
-      },
+      // For statements create a scope for loop variable declarations
+      // that wraps the body's BlockStatement scope
+      ForStatement: pushScope,
+      'ForStatement:exit': popScope,
+      ForInStatement: pushScope,
+      'ForInStatement:exit': popScope,
+      ForOfStatement: pushScope,
+      'ForOfStatement:exit': popScope,
+
+      // Switch statements create a scope for case-level declarations
+      SwitchStatement: pushScope,
+      'SwitchStatement:exit': popScope,
+
+      // Catch clauses create a scope for the catch parameter
+      CatchClause: pushScope,
+      'CatchClause:exit': popScope,
+
+      // Functions create a scope for their parameters
+      // (the body's BlockStatement will create an inner scope)
+      FunctionDeclaration: pushScope,
+      'FunctionDeclaration:exit': popScope,
+      FunctionExpression: pushScope,
+      'FunctionExpression:exit': popScope,
+      ArrowFunctionExpression: pushScope,
+      'ArrowFunctionExpression:exit': popScope,
 
       VariableDeclarator(node) {
         if (node.init === null || node.id.type !== 'Identifier') return;
