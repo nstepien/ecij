@@ -6,10 +6,11 @@ export const dynamicClass = css`
   padding: 10px;
 `;
 
+declare global {
+  const unknownVariable: string;
+}
+
 // This has an identifier that cannot be resolved statically
 export const unresolvedIdentifierClass = css`
-  color: ${
-    // @ts-expect-error
-    unknownVariable
-  };
+  color: ${unknownVariable};
 `;
