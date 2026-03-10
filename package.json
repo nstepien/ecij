@@ -42,7 +42,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^25.3.5",
+    "@types/node": "^25.4.0",
     "@vitest/coverage-v8": "^4.0.18",
     "oxfmt": "^0.36.0",
     "rolldown": "^1.0.0-rc.7",
