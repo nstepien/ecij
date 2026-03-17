@@ -45,14 +45,14 @@
     "@types/node": "^25.4.0",
     "@vitest/coverage-v8": "^4.0.18",
     "oxfmt": "^0.37.0",
-    "rolldown": "^1.0.0-rc.8",
+    "rolldown": "^1.0.0-rc.9",
     "rolldown-plugin-dts": "^0.22.4",
     "typescript": "^5.9.3",
     "vite": "^8.0.0-beta.18",
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
-    "rolldown": "^1.0.0-rc.8",
+    "rolldown": "^1.0.0-rc.9",
     "vite": "^8.0.0-beta.18"
   },
   "peerDependenciesMeta": {
