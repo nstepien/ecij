@@ -219,11 +219,12 @@ test('variable scoping and shadowing', async () => {
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "const topLevelStyle = "css-0195f7e3";
+    "//#region test/fixtures/scoping.input.ts
+    var topLevelStyle = "css-0195f7e3";
     function functionShadow() {
     	return "css-411204c9";
     }
-    const afterFunctionShadow = "css-8a8b8960";
+    var afterFunctionShadow = "css-8a8b8960";
     function level1() {
     	function level2() {
     		function level3() {
@@ -239,11 +240,11 @@ test('variable scoping and shadowing', async () => {
     		level2: level2()
     	};
     }
-    const afterNestedFunctions = "css-99472906";
-    const arrowShadow = () => {
+    var afterNestedFunctions = "css-99472906";
+    var arrowShadow = () => {
     	return "css-17f33205";
     };
-    const afterArrowShadow = "css-51830571";
+    var afterArrowShadow = "css-51830571";
     function blockScope() {
     	const beforeBlock = "css-ccba37a0";
     	console.log("css-6735f3b4");
@@ -255,20 +256,20 @@ test('variable scoping and shadowing', async () => {
     function shadowsImport() {
     	return "css-225f18cd";
     }
-    const usesImport = "css-61cf5dea";
-    const usesImportedClass = "css-4d5166f1";
+    var usesImport = "css-61cf5dea";
+    var usesImportedClass = "css-4d5166f1";
     function shadowsCssClass() {
     	return "css-9ce6da78";
     }
-    const usesBaseClass = "css-ffc7c674";
+    var usesBaseClass = "css-ffc7c674";
     function varDeclaration() {
     	return "css-68d2d974";
     }
-    const afterVarDecl = "css-5519aacd";
+    var afterVarDecl = "css-5519aacd";
     function multiShadow() {
     	return "css-6946e38a";
     }
-    const afterMultiShadow = "css-dd6f0f89";
+    var afterMultiShadow = "css-dd6f0f89";
     function sequentialBlocks() {
     	console.log("css-4156e44e");
     	console.log("css-1890c5b2");
@@ -290,7 +291,8 @@ test('variable scoping and shadowing', async () => {
     		outerFn: outerFn()
     	};
     }
-    const finalModuleStyle = "css-157eeb32";
+    var finalModuleStyle = "css-157eeb32";
+    //#endregion
     export { afterArrowShadow, afterFunctionShadow, afterMultiShadow, afterNestedFunctions, afterVarDecl, arrowShadow, blockScope, deeplyNested, finalModuleStyle, functionShadow, level1, multiShadow, sequentialBlocks, shadowsCssClass, shadowsImport, topLevelStyle, usesBaseClass, usesImport, usesImportedClass, varDeclaration };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
@@ -447,20 +449,23 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "function css() {
+    "//#region index.js
+    function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
+    //#endregion
+    //#region test/fixtures/scoping-advanced.input.ts
     function paramShadow(color) {
     	return css\`
         color: \${color};
       \`;
     }
-    const arrowParamShadow = (color) => {
+    var arrowParamShadow = (color) => {
     	return css\`
         color: \${color};
       \`;
     };
-    const arrowExprParam = (color) => css\`
+    var arrowExprParam = (color) => css\`
         color: \${color};
       \`;
     function paramPartialShadow(color) {
@@ -551,7 +556,8 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         color: \${color};
       \`;
     }
-    const finalModuleCheck = "css-29db45ed";
+    var finalModuleCheck = "css-29db45ed";
+    //#endregion
     export { MyClass, arrayDestructuring, arrowExprParam, arrowParamShadow, catchShadow, classDeclShadow, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonLiteralInit, objectDestructuring, paramPartialShadow, paramShadow };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
