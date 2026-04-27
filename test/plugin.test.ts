@@ -214,6 +214,440 @@ test('skip empty css blocks', async () => {
   expect(result.css).toBeUndefined();
 });
 
+test('variable scoping and shadowing', async () => {
+  const fixturePath = './test/fixtures/scoping.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/scoping.input.ts
+    var topLevelStyle = "css-0195f7e3";
+    function functionShadow() {
+    	return "css-411204c9";
+    }
+    var afterFunctionShadow = "css-8a8b8960";
+    function level1() {
+    	function level2() {
+    		function level3() {
+    			return "css-659695df";
+    		}
+    		return {
+    			l2style: "css-3d6fa251",
+    			level3: level3()
+    		};
+    	}
+    	return {
+    		l1style: "css-cde0a254",
+    		level2: level2()
+    	};
+    }
+    var afterNestedFunctions = "css-99472906";
+    var arrowShadow = () => {
+    	return "css-17f33205";
+    };
+    var afterArrowShadow = "css-51830571";
+    function blockScope() {
+    	const beforeBlock = "css-ccba37a0";
+    	console.log("css-6735f3b4");
+    	return {
+    		beforeBlock,
+    		afterBlock: "css-65e6a255"
+    	};
+    }
+    function shadowsImport() {
+    	return "css-225f18cd";
+    }
+    var usesImport = "css-61cf5dea";
+    var usesImportedClass = "css-4d5166f1";
+    function shadowsCssClass() {
+    	return "css-9ce6da78";
+    }
+    var usesBaseClass = "css-ffc7c674";
+    function varDeclaration() {
+    	return "css-68d2d974";
+    }
+    var afterVarDecl = "css-5519aacd";
+    function multiShadow() {
+    	return "css-6946e38a";
+    }
+    var afterMultiShadow = "css-dd6f0f89";
+    function sequentialBlocks() {
+    	console.log("css-4156e44e");
+    	console.log("css-1890c5b2");
+    	return "css-980c7373";
+    }
+    function deeplyNested() {
+    	const outerFn = () => {
+    		function inner() {
+    			console.log("css-81becece");
+    			return "css-5866845a";
+    		}
+    		return {
+    			arrowStyle: "css-92f15a0f",
+    			inner: inner()
+    		};
+    	};
+    	return {
+    		outerStyle: "css-373046c6",
+    		outerFn: outerFn()
+    	};
+    }
+    var finalModuleStyle = "css-157eeb32";
+    //#endregion
+    export { afterArrowShadow, afterFunctionShadow, afterMultiShadow, afterNestedFunctions, afterVarDecl, arrowShadow, blockScope, deeplyNested, finalModuleStyle, functionShadow, level1, multiShadow, sequentialBlocks, shadowsCssClass, shadowsImport, topLevelStyle, usesBaseClass, usesImport, usesImportedClass, varDeclaration };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-3e6bfd87 {
+      display: flex;
+    }.css-0195f7e3 {
+      color: red;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .css-411204c9 {
+      color: blue;
+        font-size: 16px;
+    }
+
+    .css-8a8b8960 {
+      color: red;
+    }
+
+    .css-659695df {
+      color: orange;
+            padding: 20px;
+            margin: 10px;
+    }
+
+    .css-3d6fa251 {
+      color: purple;
+          margin: 10px;
+    }
+
+    .css-cde0a254 {
+      color: green;
+        padding: 10px;
+    }
+
+    .css-99472906 {
+      color: red;
+    }
+
+    .css-17f33205 {
+      color: cyan;
+    }
+
+    .css-51830571 {
+      color: red;
+    }
+
+    .css-ccba37a0 {
+      background: white;
+    }
+
+    .css-6735f3b4 {
+      background: black;
+    }
+
+    .css-65e6a255 {
+      background: white;
+    }
+
+    .css-225f18cd {
+      color: black;
+    }
+
+    .css-61cf5dea {
+      color: teal;
+      font-size: 20px;
+    }
+
+    .css-4d5166f1 {
+      &.css-3e6bfd87 {
+        display: block;
+      }
+    }
+
+    .css-336338e2 {
+      display: flex;
+    }
+
+    .css-391f07e4 {
+      display: grid;
+    }
+
+    .css-9ce6da78 {
+      &.css-391f07e4 {
+          gap: 10px;
+        }
+    }
+
+    .css-ffc7c674 {
+      &.css-336338e2 {
+        align-items: center;
+      }
+    }
+
+    .css-68d2d974 {
+      color: magenta;
+    }
+
+    .css-5519aacd {
+      color: red;
+    }
+
+    .css-6946e38a {
+      color: silver;
+        font-size: 32px;
+        font-weight: 100;
+    }
+
+    .css-dd6f0f89 {
+      color: red;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .css-4156e44e {
+      color: navy;
+    }
+
+    .css-1890c5b2 {
+      color: olive;
+    }
+
+    .css-980c7373 {
+      color: red;
+    }
+
+    .css-81becece {
+      color: ivory;
+    }
+
+    .css-5866845a {
+      color: wheat;
+    }
+
+    .css-92f15a0f {
+      color: salmon;
+    }
+
+    .css-373046c6 {
+      color: coral;
+    }
+
+    .css-157eeb32 {
+      color: red;
+      font-size: 16px;
+      font-weight: bold;
+    }/*$vite$:1*/"
+  `);
+});
+
+test('advanced scoping: function parameters, for-of/in, catch, static blocks', async () => {
+  const fixturePath = './test/fixtures/scoping-advanced.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/scoping-advanced.input.ts
+    function paramShadow(color) {
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    var arrowParamShadow = (color) => {
+    	return css\`
+        color: \${color};
+      \`;
+    };
+    var arrowExprParam = (color) => css\`
+        color: \${color};
+      \`;
+    function paramPartialShadow(color) {
+    	return "css-72a8e6d6";
+    }
+    function forOfShadow() {
+    	for (const color of ["blue", "green"]) console.log(css\`
+            color: \${color};
+          \`);
+    	return "css-6243fe14";
+    }
+    function forInShadow() {
+    	for (const color in { blue: 1 }) console.log(css\`
+            color: \${color};
+          \`);
+    	return "css-330916ac";
+    }
+    function catchShadow() {
+    	try {
+    		throw new Error();
+    	} catch (color) {
+    		console.log(css\`
+            color: \${color};
+          \`);
+    	}
+    	return "css-a30d4f0f";
+    }
+    function letNoInit() {
+    	return css\`
+        color: \${"dynamic"};
+      \`;
+    }
+    function nonLiteralInit() {
+    	return css\`
+        color: \${String("blue")};
+      \`;
+    }
+    function defaultParam(color = "blue") {
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function forStatementShadow() {
+    	for (let color = "blue"; color !== "done"; color = "done") console.log("css-c7155baa");
+    	return "css-f19ded5e";
+    }
+    var MyClass = class MyClass {
+    	static style;
+    	static {
+    		MyClass.style = "css-5f19011e";
+    	}
+    };
+    function fnDeclShadow() {
+    	function color() {}
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function classDeclShadow() {
+    	class color {}
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function fnExprName() {
+    	return "css-c8fe0069";
+    }
+    var fnExprNameInner = function color() {
+    	return css\`
+        color: \${color};
+      \`;
+    };
+    var classExprNameInner = class color {
+    	static style = css\`
+        color: \${color};
+      \`;
+    };
+    var classExprName = class color {};
+    var afterClassExpr = "css-9c55bf3b";
+    function arrayDestructuring() {
+    	const [color] = ["blue"];
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function objectDestructuring() {
+    	const { color } = { color: "blue" };
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function forOfDestructuring() {
+    	for (const [color] of [["blue"]]) console.log(css\`
+            color: \${color};
+          \`);
+    	return "css-fd3f8093";
+    }
+    function destructuredParam({ color }) {
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function varInBlock() {
+    	console.log("css-b7f7cd35");
+    	return "css-14873b06";
+    }
+    function varForOf() {
+    	for (var color of ["blue", "green"]) console.log(css\`
+            color: \${color};
+          \`);
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function varForIn() {
+    	for (var color in { blue: 1 }) console.log(css\`
+            color: \${color};
+          \`);
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    var finalModuleCheck = "css-f953f505";
+    //#endregion
+    export { MyClass, afterClassExpr, arrayDestructuring, arrowExprParam, arrowParamShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonLiteralInit, objectDestructuring, paramPartialShadow, paramShadow, varForIn, varForOf, varInBlock };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-72a8e6d6 {
+      font-size: 16px;
+    }
+
+    .css-6243fe14 {
+      color: red;
+    }
+
+    .css-330916ac {
+      color: red;
+    }
+
+    .css-a30d4f0f {
+      color: red;
+    }
+
+    .css-c7155baa {
+      color: blue;
+    }
+
+    .css-f19ded5e {
+      color: red;
+    }
+
+    .css-5f19011e {
+      color: purple;
+    }
+
+    .css-c8fe0069 {
+      color: red;
+    }
+
+    .css-9c55bf3b {
+      color: red;
+    }
+
+    .css-fd3f8093 {
+      color: red;
+    }
+
+    .css-b7f7cd35 {
+      color: blue;
+    }
+
+    .css-14873b06 {
+      color: blue;
+    }
+
+    .css-f953f505 {
+      color: red;
+      font-size: 16px;
+    }/*$vite$:1*/"
+  `);
+});
+
 test('classPrefix setting', async () => {
   const fixturePath = './test/fixtures/basic.input.ts';
   const result = await buildWithPlugin(fixturePath, {

@@ -169,6 +169,5 @@ npm test -- -u
 
 - enable `noUncheckedIndexedAccess`
 - Log CSS extraction failures
-- Scope handling
 - Full import/export handling (default/namespace import/export)
 - Sourcemaps
