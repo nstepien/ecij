@@ -4,22 +4,14 @@
     "emitDeclarationOnly": true,
     "erasableSyntaxOnly": true,
     "exactOptionalPropertyTypes": true,
-    "forceConsistentCasingInFileNames": true,
     "isolatedDeclarations": true,
     "isolatedModules": true,
     "lib": ["ESNext"],
-    "libReplacement": false,
-    "module": "esnext",
     "moduleDetection": "force",
-    "moduleResolution": "bundler",
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "outDir": "./.cache/ts",
-    "pretty": true,
-    "strict": true,
     "target": "esnext",
-    "types": [],
-    "useUnknownInCatchVariables": true,
     "verbatimModuleSyntax": true
   }
 }
