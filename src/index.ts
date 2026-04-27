@@ -355,6 +355,15 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         }
       },
 
+      // Class expression names are only visible inside the class body (like FunctionExpression).
+      ClassExpression(node) {
+        pushScope();
+        if (node.id !== null) {
+          currentScope.identifiers.set(node.id.name, undefined);
+        }
+      },
+      'ClassExpression:exit': popScope,
+
       // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement")
       StaticBlock: pushScope,
       'StaticBlock:exit': popScope,

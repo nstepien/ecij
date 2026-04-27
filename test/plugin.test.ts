@@ -538,6 +538,13 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         color: \${color};
       \`;
     };
+    var classExprNameInner = class color {
+    	static style = css\`
+        color: \${color};
+      \`;
+    };
+    var classExprName = class color {};
+    var afterClassExpr = "css-9c55bf3b";
     function arrayDestructuring() {
     	const [color] = ["blue"];
     	return css\`
@@ -554,16 +561,16 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     	for (const [color] of [["blue"]]) console.log(css\`
             color: \${color};
           \`);
-    	return "css-ee7ec41c";
+    	return "css-fd3f8093";
     }
     function destructuredParam({ color }) {
     	return css\`
         color: \${color};
       \`;
     }
-    var finalModuleCheck = "css-197e9efe";
+    var finalModuleCheck = "css-5999cb71";
     //#endregion
-    export { MyClass, arrayDestructuring, arrowExprParam, arrowParamShadow, catchShadow, classDeclShadow, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonLiteralInit, objectDestructuring, paramPartialShadow, paramShadow };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrowExprParam, arrowParamShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonLiteralInit, objectDestructuring, paramPartialShadow, paramShadow };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -598,11 +605,15 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: red;
     }
 
-    .css-ee7ec41c {
+    .css-9c55bf3b {
       color: red;
     }
 
-    .css-197e9efe {
+    .css-fd3f8093 {
+      color: red;
+    }
+
+    .css-5999cb71 {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"

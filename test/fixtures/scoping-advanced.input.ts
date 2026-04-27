@@ -204,7 +204,27 @@ export const fnExprNameInner = function color() {
 };
 
 // =============================================
-// 17. Array destructuring shadows
+// 17. Class expression name DOES shadow inside its own body
+// =============================================
+export const classExprNameInner = class color {
+  // Inside the body, 'color' refers to the class itself, not module-level.
+  // So this should NOT be extracted.
+  static style = css`
+    color: ${color as unknown as string};
+  `;
+};
+
+// =============================================
+// 18. Class expression name does NOT shadow in containing scope
+// =============================================
+export const classExprName = class color {};
+// Module-level color ('red') should still resolve here.
+export const afterClassExpr = css`
+  color: ${color};
+`;
+
+// =============================================
+// 19. Array destructuring shadows
 // =============================================
 export function arrayDestructuring() {
   const [color] = ['blue'];
@@ -214,7 +234,7 @@ export function arrayDestructuring() {
 }
 
 // =============================================
-// 18. Object destructuring shadows
+// 20. Object destructuring shadows
 // =============================================
 export function objectDestructuring() {
   const { color } = { color: 'blue' };
@@ -224,7 +244,7 @@ export function objectDestructuring() {
 }
 
 // =============================================
-// 19. For-of with array destructuring
+// 21. For-of with array destructuring
 // =============================================
 export function forOfDestructuring() {
   for (const [color] of [['blue']]) {
@@ -240,7 +260,7 @@ export function forOfDestructuring() {
 }
 
 // =============================================
-// 20. Destructured function parameter
+// 22. Destructured function parameter
 // =============================================
 export function destructuredParam({ color }: { color: string }) {
   return css`
@@ -249,7 +269,7 @@ export function destructuredParam({ color }: { color: string }) {
 }
 
 // =============================================
-// 21. Module-level check: everything should still resolve
+// 23. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
