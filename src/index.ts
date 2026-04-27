@@ -347,7 +347,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
       // Switch statements create a scope for case-level declarations.
       // SwitchCase consequent is Array<Statement>, not a BlockStatement, so no merge needed.
-      SwitchStatement: pushScope,
+      SwitchStatement() {
+        pushScope();
+      },
       'SwitchStatement:exit': popScope,
 
       // Catch clauses: create a scope for the catch parameter, merge with body BlockStatement
