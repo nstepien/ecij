@@ -269,7 +269,58 @@ export function destructuredParam({ color }: { color: string }) {
 }
 
 // =============================================
-// 23. Module-level check: everything should still resolve
+// 23. var in block scope hoists to function scope
+// =============================================
+export function varInBlock() {
+  {
+    var color = 'blue';
+    const inBlock = css`
+      color: ${color};
+    `;
+    console.log(inBlock);
+  }
+  // var color hoists to function scope → resolves to 'blue', not module-level 'red'
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 24. var in for-of hoists to function scope (unknown value)
+// =============================================
+export function varForOf() {
+  for (var color of ['blue', 'green']) {
+    console.log(
+      css`
+        color: ${color};
+      `,
+    );
+  }
+  // var color hoists to function scope with unknown value → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 25. var in for-in hoists to function scope (unknown value)
+// =============================================
+export function varForIn() {
+  for (var color in { blue: 1 }) {
+    console.log(
+      css`
+        color: ${color};
+      `,
+    );
+  }
+  // var color hoists to function scope with unknown value → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 26. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};

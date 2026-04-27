@@ -38,6 +38,8 @@ interface Scope {
   // undefined value means "declared but value unknown at build time" (e.g. function params)
   identifiers: Map<string, string | undefined>;
   parent: Scope | null;
+  // true for function/module/static-block scopes (where `var` bindings land)
+  isFunctionScope: boolean;
 }
 
 interface Declaration {
@@ -114,8 +116,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     let hasCSSTagImport = false;
 
     // Scope tracking: root scope for module-level declarations
-    const rootScope: Scope = { identifiers: new Map(), parent: null };
+    const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
     let currentScope = rootScope;
+    let currentVariableDeclarationKind: string | undefined;
 
     const parsedInfo: ParsedFileInfo = {
       declarations,
@@ -158,11 +161,11 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       }
     }
 
-    function recordIdentifierWithValue(localName: string, value: string) {
-      currentScope.identifiers.set(localName, value);
+    function recordIdentifierWithValue(localName: string, value: string, scope = currentScope) {
+      scope.identifiers.set(localName, value);
 
       // Only record exports for module-level (root scope) declarations
-      if (currentScope === rootScope && localNameToExportedNameMap.has(localName)) {
+      if (scope === rootScope && localNameToExportedNameMap.has(localName)) {
         const exportedName = localNameToExportedNameMap.get(localName)!;
         exportNameToValueMap.set(exportedName, value);
       }
@@ -171,6 +174,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     function handleTaggedTemplateExpression(
       localName: string | undefined,
       node: TaggedTemplateExpression,
+      scope = currentScope,
     ) {
       if (!(hasCSSTagImport && node.tag.type === 'Identifier' && node.tag.name === 'css')) {
         return;
@@ -190,17 +194,25 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         className,
         node,
         hasInterpolations: node.quasi.expressions.length !== 0,
-        scope: currentScope,
+        scope,
       });
 
       // Record generated class names for css declarations
       if (localName !== undefined) {
-        recordIdentifierWithValue(localName, className);
+        recordIdentifierWithValue(localName, className, scope);
       }
     }
 
-    function pushScope() {
-      currentScope = { identifiers: new Map(), parent: currentScope };
+    function pushScope(isFunctionScope = false) {
+      currentScope = { identifiers: new Map(), parent: currentScope, isFunctionScope };
+    }
+
+    function findFunctionScope(): Scope {
+      let scope = currentScope;
+      while (!scope.isFunctionScope) {
+        scope = scope.parent!;
+      }
+      return scope;
     }
 
     function popScope() {
@@ -213,17 +225,17 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     // Recursively extract all binding identifiers from a pattern and record them
     // as unknown values in the current scope (for shadowing).
-    function recordBindingPattern(pattern: BindingPattern) {
+    function recordBindingPattern(pattern: BindingPattern, scope = currentScope) {
       switch (pattern.type) {
         case 'Identifier':
-          currentScope.identifiers.set(pattern.name, undefined);
+          scope.identifiers.set(pattern.name, undefined);
           break;
         case 'ObjectPattern':
           for (const prop of pattern.properties) {
             if (prop.type === 'RestElement') {
-              recordBindingPattern(prop.argument);
+              recordBindingPattern(prop.argument, scope);
             } else {
-              recordBindingPattern(prop.value);
+              recordBindingPattern(prop.value, scope);
             }
           }
           break;
@@ -231,14 +243,14 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           for (const element of pattern.elements) {
             if (element === null) continue;
             if (element.type === 'RestElement') {
-              recordBindingPattern(element.argument);
+              recordBindingPattern(element.argument, scope);
             } else {
-              recordBindingPattern(element);
+              recordBindingPattern(element, scope);
             }
           }
           break;
         case 'AssignmentPattern':
-          recordBindingPattern(pattern.left);
+          recordBindingPattern(pattern.left, scope);
           break;
       }
     }
@@ -277,7 +289,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         if (node.id !== null) {
           currentScope.identifiers.set(node.id.name, undefined);
         }
-        pushScope();
+        pushScope(true);
         recordParams(node.params);
         if (node.body?.type === 'BlockStatement') {
           skippedBlockStatements.add(node.body);
@@ -287,7 +299,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
       // FunctionExpression names are only visible inside the function body (for recursion).
       FunctionExpression(node) {
-        pushScope();
+        pushScope(true);
         if (node.id !== null) {
           currentScope.identifiers.set(node.id.name, undefined);
         }
@@ -299,7 +311,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       'FunctionExpression:exit': popScope,
 
       ArrowFunctionExpression(node) {
-        pushScope();
+        pushScope(true);
         recordParams(node.params);
         if (node.body.type === 'BlockStatement') {
           skippedBlockStatements.add(node.body);
@@ -365,13 +377,27 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       'ClassExpression:exit': popScope,
 
       // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement")
-      StaticBlock: pushScope,
+      // They are function-scoped for `var` declarations.
+      StaticBlock() {
+        pushScope(true);
+      },
       'StaticBlock:exit': popScope,
 
+      VariableDeclaration(node) {
+        currentVariableDeclarationKind = node.kind;
+      },
+      'VariableDeclaration:exit'() {
+        currentVariableDeclarationKind = undefined;
+      },
+
       VariableDeclarator(node) {
+        // `var` declarations are function-scoped; `let`/`const` are block-scoped
+        const targetScope =
+          currentVariableDeclarationKind === 'var' ? findFunctionScope() : currentScope;
+
         if (node.id.type !== 'Identifier') {
           // Destructuring pattern: record all binding identifiers for shadowing
-          recordBindingPattern(node.id);
+          recordBindingPattern(node.id, targetScope);
           return;
         }
 
@@ -381,7 +407,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           case 'TaggedTemplateExpression':
             if (node.init.tag.type === 'Identifier' && node.init.tag.name === 'css') {
               taggedTemplateExpressionFromVariableDeclarator.add(node.init);
-              handleTaggedTemplateExpression(localName, node.init);
+              handleTaggedTemplateExpression(localName, node.init, targetScope);
               return;
             }
             break;
@@ -389,14 +415,14 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           case 'Literal':
             if (typeof node.init.value === 'string' || typeof node.init.value === 'number') {
               const value = String(node.init.value);
-              recordIdentifierWithValue(localName, value);
+              recordIdentifierWithValue(localName, value, targetScope);
               return;
             }
             break;
         }
 
         // Record as unknown value so it shadows outer variables
-        currentScope.identifiers.set(localName, undefined);
+        targetScope.identifiers.set(localName, undefined);
       },
 
       TaggedTemplateExpression(node) {
