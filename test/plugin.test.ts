@@ -533,6 +533,11 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     function fnExprName() {
     	return "css-c8fe0069";
     }
+    var fnExprNameInner = function color() {
+    	return css\`
+        color: \${color};
+      \`;
+    };
     function arrayDestructuring() {
     	const [color] = ["blue"];
     	return css\`
@@ -549,16 +554,16 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     	for (const [color] of [["blue"]]) console.log(css\`
             color: \${color};
           \`);
-    	return "css-3e927990";
+    	return "css-ee7ec41c";
     }
     function destructuredParam({ color }) {
     	return css\`
         color: \${color};
       \`;
     }
-    var finalModuleCheck = "css-29db45ed";
+    var finalModuleCheck = "css-197e9efe";
     //#endregion
-    export { MyClass, arrayDestructuring, arrowExprParam, arrowParamShadow, catchShadow, classDeclShadow, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonLiteralInit, objectDestructuring, paramPartialShadow, paramShadow };"
+    export { MyClass, arrayDestructuring, arrowExprParam, arrowParamShadow, catchShadow, classDeclShadow, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonLiteralInit, objectDestructuring, paramPartialShadow, paramShadow };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -593,11 +598,11 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: red;
     }
 
-    .css-3e927990 {
+    .css-ee7ec41c {
       color: red;
     }
 
-    .css-29db45ed {
+    .css-197e9efe {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"

@@ -193,7 +193,18 @@ export function fnExprName() {
 }
 
 // =============================================
-// 16. Array destructuring shadows
+// 16. Function expression name DOES shadow inside its own body
+// =============================================
+export const fnExprNameInner = function color() {
+  // Inside the body, 'color' refers to the function itself, not module-level.
+  // So this should NOT be extracted.
+  return css`
+    color: ${color as unknown as string};
+  `;
+};
+
+// =============================================
+// 17. Array destructuring shadows
 // =============================================
 export function arrayDestructuring() {
   const [color] = ['blue'];
@@ -203,7 +214,7 @@ export function arrayDestructuring() {
 }
 
 // =============================================
-// 17. Object destructuring shadows
+// 18. Object destructuring shadows
 // =============================================
 export function objectDestructuring() {
   const { color } = { color: 'blue' };
@@ -213,7 +224,7 @@ export function objectDestructuring() {
 }
 
 // =============================================
-// 18. For-of with array destructuring
+// 19. For-of with array destructuring
 // =============================================
 export function forOfDestructuring() {
   for (const [color] of [['blue']]) {
@@ -229,7 +240,7 @@ export function forOfDestructuring() {
 }
 
 // =============================================
-// 19. Destructured function parameter
+// 20. Destructured function parameter
 // =============================================
 export function destructuredParam({ color }: { color: string }) {
   return css`
@@ -238,7 +249,7 @@ export function destructuredParam({ color }: { color: string }) {
 }
 
 // =============================================
-// 20. Module-level check: everything should still resolve
+// 21. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
