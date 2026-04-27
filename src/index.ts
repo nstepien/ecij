@@ -4,7 +4,12 @@ import { cwd } from 'node:process';
 import type { Plugin, TransformPluginContext } from 'rolldown';
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
 import { parseSync, Visitor } from 'rolldown/utils';
-import type { BlockStatement, TaggedTemplateExpression } from '@oxc-project/types';
+import type {
+  BindingPattern,
+  BlockStatement,
+  ParamPattern,
+  TaggedTemplateExpression,
+} from '@oxc-project/types';
 
 export interface Configuration {
   /**
@@ -208,7 +213,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     // Recursively extract all binding identifiers from a pattern and record them
     // as unknown values in the current scope (for shadowing).
-    function recordBindingPattern(pattern: import('@oxc-project/types').BindingPattern) {
+    function recordBindingPattern(pattern: BindingPattern) {
       switch (pattern.type) {
         case 'Identifier':
           currentScope.identifiers.set(pattern.name, undefined);
@@ -238,7 +243,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       }
     }
 
-    function recordParams(params: import('@oxc-project/types').ParamPattern[]) {
+    function recordParams(params: ParamPattern[]) {
       for (const param of params) {
         if (param.type === 'TSParameterProperty') {
           recordBindingPattern(param.parameter);
