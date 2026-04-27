@@ -313,7 +313,7 @@ export function varForIn() {
       `,
     );
   }
-  // var color hoists to function scope with unknown value �� NOT extracted
+  // var color hoists to function scope with unknown value → NOT extracted
   return css`
     color: ${color!};
   `;
