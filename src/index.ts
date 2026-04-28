@@ -1,15 +1,16 @@
 import { createHash } from 'node:crypto';
 import { relative } from 'node:path';
 import { cwd } from 'node:process';
-import type { Plugin, TransformPluginContext } from 'rolldown';
-import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
-import { parseSync, Visitor } from 'rolldown/utils';
+
 import type {
   BindingPattern,
   BlockStatement,
   ParamPattern,
   TaggedTemplateExpression,
 } from '@oxc-project/types';
+import type { Plugin, TransformPluginContext } from 'rolldown';
+import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
+import { parseSync, Visitor } from 'rolldown/utils';
 
 export interface Configuration {
   /**
@@ -552,6 +553,13 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
           if (expression.type !== 'Identifier') {
             // Complex expression - skip this entire css`` block
+            context.warn(
+              {
+                pluginCode: 'COMPLEX_INTERPOLATION',
+                message: 'skipped CSS extraction — interpolation is not a static identifier',
+              },
+              expression.start,
+            );
             allResolved = false;
             break;
           }
@@ -561,6 +569,13 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
           if (resolvedValue === undefined) {
             // Cannot resolve - skip this entire css`` block
+            context.warn(
+              {
+                pluginCode: 'UNRESOLVED_INTERPOLATION',
+                message: `skipped CSS extraction — could not resolve "${identifierName}" to a static string or number`,
+              },
+              expression.start,
+            );
             allResolved = false;
             break;
           }

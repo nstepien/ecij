@@ -1,6 +1,7 @@
 import { css } from 'ecij';
-import { bgColor as background, redClass, width } from './imported-style';
+
 import { fontSize, fontWeight } from './imported-literals';
+import { bgColor as background, redClass, width } from './imported-style';
 
 // Basic CSS transformation
 export const buttonClass = css`

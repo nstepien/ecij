@@ -1,4 +1,5 @@
 import { css } from 'ecij';
+
 import { importedColor, importedSize, importedClass } from './scoping-helper';
 
 // =============================================
