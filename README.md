@@ -167,7 +167,6 @@ npm test -- -u
 
 ## TODO
 
-- enable `noUncheckedIndexedAccess`
 - Log CSS extraction failures
 - Full import/export handling (default/namespace import/export)
 - Sourcemaps

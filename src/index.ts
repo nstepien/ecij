@@ -531,7 +531,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     for (const declaration of declarations) {
       if (declaration.hasInterpolations) continue;
 
-      const cssContent = declaration.node.quasi.quasis[0].value.raw;
+      const cssContent = declaration.node.quasi.quasis[0]!.value.raw;
       addProcessedDeclaration(declaration, cssContent);
     }
 
@@ -545,10 +545,10 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       let allResolved = true;
 
       for (let i = 0; i < quasis.length; i++) {
-        cssContent += quasis[i].value.raw;
+        cssContent += quasis[i]!.value.raw;
 
         if (i < expressions.length) {
-          const expression = expressions[i];
+          const expression = expressions[i]!;
 
           if (expression.type !== 'Identifier') {
             // Complex expression - skip this entire css`` block
