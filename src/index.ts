@@ -551,28 +551,44 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         if (i < expressions.length) {
           const expression = expressions[i]!;
 
-          if (expression.type !== 'Identifier') {
+          let resolvedValue: string | undefined;
+
+          if (
+            expression.type === 'Literal' &&
+            (typeof expression.value === 'string' || typeof expression.value === 'number')
+          ) {
+            resolvedValue = String(expression.value);
+          } else if (
+            expression.type === 'UnaryExpression' &&
+            (expression.operator === '-' || expression.operator === '+') &&
+            expression.argument.type === 'Literal' &&
+            typeof expression.argument.value === 'number'
+          ) {
+            resolvedValue = String(
+              expression.operator === '-' ? -expression.argument.value : expression.argument.value,
+            );
+          } else if (expression.type === 'Identifier') {
+            resolvedValue = await resolveValue(expression.name, declaration.scope);
+
+            if (resolvedValue === undefined) {
+              // Cannot resolve - skip this entire css`` block
+              context.warn(
+                {
+                  pluginCode: 'UNRESOLVED_INTERPOLATION',
+                  message: `skipped CSS extraction — could not resolve "${expression.name}" to a static string or number`,
+                },
+                expression.start,
+              );
+              allResolved = false;
+              break;
+            }
+          } else {
             // Complex expression - skip this entire css`` block
             context.warn(
               {
                 pluginCode: 'COMPLEX_INTERPOLATION',
-                message: 'skipped CSS extraction — interpolation is not a static identifier',
-              },
-              expression.start,
-            );
-            allResolved = false;
-            break;
-          }
-
-          const identifierName = expression.name;
-          const resolvedValue = await resolveValue(identifierName, declaration.scope);
-
-          if (resolvedValue === undefined) {
-            // Cannot resolve - skip this entire css`` block
-            context.warn(
-              {
-                pluginCode: 'UNRESOLVED_INTERPOLATION',
-                message: `skipped CSS extraction — could not resolve "${identifierName}" to a static string or number`,
+                message:
+                  'skipped CSS extraction — interpolation is not a static string, number, or identifier',
               },
               expression.start,
             );

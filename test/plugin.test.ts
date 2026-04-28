@@ -239,7 +239,7 @@ test('skip css blocks with complex interpolations', async () => {
           "file": "test/fixtures/complex-interpolation.input.ts",
           "line": 3,
         },
-        "message": "skipped CSS extraction — interpolation is not a static identifier",
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
         "plugin": "ecij",
         "pluginCode": "COMPLEX_INTERPOLATION",
         "pos": 72,
@@ -262,6 +262,78 @@ test('skip css blocks with complex interpolations', async () => {
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 187,
+      },
+    ]
+  `);
+});
+
+test('inline string and number literal interpolations', async () => {
+  const fixturePath = './test/fixtures/literal-interpolation.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/literal-interpolation.input.ts
+    var stringLiteralClass = "css-1c8f4a51";
+    var numberLiteralClass = "css-25b58437";
+    var mixedClass = "css-0a775b56";
+    var negativeNumberClass = "css-f5d083cc";
+    var unaryPlusClass = "css-3924bbbe";
+    var booleanLiteralClass = css\`
+      color: \${true};
+    \`;
+    //#endregion
+    export { booleanLiteralClass, mixedClass, negativeNumberClass, numberLiteralClass, stringLiteralClass, unaryPlusClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-1c8f4a51 {
+      color: blue;
+    }
+
+    .css-25b58437 {
+      width: 42px;
+      opacity: 0.5;
+    }
+
+    .css-0a775b56 {
+      color: red;
+      font-size: 16px;
+      background: white;
+    }
+
+    .css-f5d083cc {
+      margin: -5px;
+      letter-spacing: -0.25em;
+    }
+
+    .css-3924bbbe {
+      width: 10px;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "21: \`;
+    22: export const booleanLiteralClass = css\`
+    23:   color: \${true};
+                   ^
+    24: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/literal-interpolation.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/literal-interpolation.input.ts",
+          "line": 23,
+        },
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "plugin": "ecij",
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 497,
       },
     ]
   `);
