@@ -588,9 +588,52 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         color: \${color};
       \`;
     }
-    var finalModuleCheck = "css-f953f505";
+    function objectRestShadow() {
+    	const { ...color } = { color: "blue" };
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function arrayRestShadow() {
+    	const [, ...color] = [
+    		"a",
+    		"b",
+    		"c"
+    	];
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function restParamShadow(...color) {
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function switchScope(value) {
+    	switch (value) {
+    		case "a":
+    			console.log("css-9c07daeb");
+    			break;
+    		default: break;
+    	}
+    	return "css-98764909";
+    }
+    function tag(_) {
+    	return "";
+    }
+    function nonCssTaggedShadow() {
+    	return css\`
+        color: \${tag\`anything\`};
+      \`;
+    }
+    function booleanLiteralShadow() {
+    	return css\`
+        color: \${true};
+      \`;
+    }
+    var finalModuleCheck = "css-7ff6d232";
     //#endregion
-    export { MyClass, afterClassExpr, arrayDestructuring, arrowExprParam, arrowParamShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonLiteralInit, objectDestructuring, paramPartialShadow, paramShadow, varForIn, varForOf, varInBlock };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, switchScope, varForIn, varForOf, varInBlock };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -641,7 +684,15 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: blue;
     }
 
-    .css-f953f505 {
+    .css-9c07daeb {
+      color: blue;
+    }
+
+    .css-98764909 {
+      color: red;
+    }
+
+    .css-7ff6d232 {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"

@@ -320,7 +320,87 @@ export function varForIn() {
 }
 
 // =============================================
-// 26. Module-level check: everything should still resolve
+// 26. Object rest pattern shadows
+// =============================================
+export function objectRestShadow() {
+  const { ...color } = { color: 'blue' as string };
+  // color rest-binds the whole object → unknown value → NOT extracted
+  return css`
+    color: ${color as unknown as string};
+  `;
+}
+
+// =============================================
+// 27. Array rest pattern shadows
+// =============================================
+export function arrayRestShadow() {
+  const [, ...color] = ['a', 'b', 'c'];
+  // color rest-binds the remaining elements → unknown value → NOT extracted
+  return css`
+    color: ${color as unknown as string};
+  `;
+}
+
+// =============================================
+// 28. Rest parameter shadows
+// =============================================
+export function restParamShadow(...color: string[]) {
+  // color is a rest parameter → unknown value → NOT extracted
+  return css`
+    color: ${color as unknown as string};
+  `;
+}
+
+// =============================================
+// 29. Switch statement scope
+// =============================================
+export function switchScope(value: string) {
+  switch (value) {
+    case 'a': {
+      const color = 'blue';
+      console.log(
+        css`
+          color: ${color};
+        `,
+      );
+      break;
+    }
+    default:
+      break;
+  }
+  // After switch, module-level color should resolve
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 30. Non-css tagged template in declarator shadows
+// =============================================
+function tag(_: TemplateStringsArray): string {
+  return '';
+}
+export function nonCssTaggedShadow() {
+  const color = tag`anything`;
+  // color is initialized via a non-css tagged template → shadows → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 31. Non-string/number literal shadows
+// =============================================
+export function booleanLiteralShadow() {
+  const color = true;
+  // color is a boolean literal → unknown value → NOT extracted
+  return css`
+    color: ${color as unknown as string};
+  `;
+}
+
+// =============================================
+// 32. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
