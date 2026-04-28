@@ -247,7 +247,7 @@ export function objectDestructuring() {
 // 21. For-of with array destructuring
 // =============================================
 export function forOfDestructuring() {
-  for (const [color] of [['blue']]) {
+  for (const [color] of [['blue']] as const) {
     console.log(
       css`
         color: ${color};

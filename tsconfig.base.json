@@ -9,6 +9,7 @@
     "lib": ["ESNext"],
     "moduleDetection": "force",
     "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
     "outDir": "./.cache/ts",
     "target": "esnext",
