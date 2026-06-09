@@ -5,6 +5,7 @@ import { cwd } from 'node:process';
 import type {
   BindingPattern,
   BlockStatement,
+  Expression,
   ParamPattern,
   TaggedTemplateExpression,
 } from '@oxc-project/types';
@@ -50,10 +51,32 @@ interface Declaration {
   scope: Scope;
 }
 
+type ImportedIdentifier =
+  // `import { x } from 'mod'` (`imported` is `'default'` for default imports)
+  | { kind: 'named'; source: string; imported: string }
+  // `import * as ns from 'mod'`
+  | { kind: 'namespace'; source: string };
+
+type ExportRecord =
+  // Locally-resolved literal/css class. `fromCss` marks css`` class names,
+  // which are only usable once their declaration was actually extracted.
+  // `localName` identifies the underlying binding (per ECMA-262, two export
+  // aliases of the same binding are NOT ambiguous when reached via `export *`).
+  | { kind: 'value'; value: string; fromCss: boolean; localName: string | undefined }
+  // `export { x } from 'mod'`, including default-as-name and name-as-default
+  | { kind: 'reexport'; source: string; imported: string }
+  // `export * as ns from 'mod'`
+  | { kind: 'namespace-reexport'; source: string }
+  // Explicit export whose value is not statically known. Recorded so explicit
+  // exports still shadow `export *` sources, per ESM precedence.
+  | { kind: 'unresolved'; localName: string | undefined };
+
 interface ParsedFileInfo {
   readonly declarations: readonly Declaration[];
-  readonly importedIdentifiers: ReadonlyMap<string, { source: string; imported: string }>;
-  readonly exportNameToValueMap: ReadonlyMap<string, string>;
+  readonly importedIdentifiers: ReadonlyMap<string, ImportedIdentifier>;
+  readonly exportNameToValueMap: ReadonlyMap<string, ExportRecord>;
+  // Sources from `export * from 'mod'` (looked up when a name is missing from exportNameToValueMap)
+  readonly exportStarSources: readonly string[];
 }
 
 // allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, .tsx files
@@ -70,12 +93,117 @@ function hashText(text: string): string {
   return createHash('md5').update(text).digest('hex').slice(0, 8);
 }
 
+// Remove query parameters from a module ID, e.g. `/src/a.ts?used` -> `/src/a.ts`
+function stripQuery(id: string): string {
+  const queryIndex = id.indexOf('?');
+  return queryIndex === -1 ? id : id.slice(0, queryIndex);
+}
+
+// Unwraps parentheses and TypeScript type-assertion wrappers,
+// which do not change the runtime value of an expression.
+function unwrapExpression(expression: Expression): Expression {
+  while (
+    expression.type === 'ParenthesizedExpression' ||
+    expression.type === 'TSAsExpression' ||
+    expression.type === 'TSSatisfiesExpression' ||
+    expression.type === 'TSNonNullExpression'
+  ) {
+    expression = expression.expression;
+  }
+
+  return expression;
+}
+
+// Statically evaluates an expression to its string value:
+// string/number literals and signed number literals (`-5`, `+5`).
+function resolveStaticExpression(expression: Expression): string | undefined {
+  expression = unwrapExpression(expression);
+
+  switch (expression.type) {
+    case 'Literal':
+      if (typeof expression.value === 'string' || typeof expression.value === 'number') {
+        return String(expression.value);
+      }
+      break;
+
+    case 'UnaryExpression': {
+      const argument = unwrapExpression(expression.argument);
+      if (
+        (expression.operator === '-' || expression.operator === '+') &&
+        argument.type === 'Literal' &&
+        typeof argument.value === 'number'
+      ) {
+        return String(expression.operator === '-' ? -argument.value : argument.value);
+      }
+      break;
+    }
+  }
+
+  return undefined;
+}
+
+// Flattens `ns.inner.foo` into `['ns', 'inner', 'foo']`. Returns undefined
+// for anything other than a plain (non-computed, non-optional) identifier
+// chain; parens/TS assertion wrappers around any segment are unwrapped.
+function flattenMemberExpressionPath(expression: Expression): string[] | undefined {
+  const names: string[] = [];
+  let current = unwrapExpression(expression);
+
+  while (current.type === 'MemberExpression') {
+    if (current.computed || current.optional || current.property.type !== 'Identifier') {
+      return undefined;
+    }
+    names.unshift(current.property.name);
+    current = unwrapExpression(current.object);
+  }
+
+  if (current.type !== 'Identifier') {
+    return undefined;
+  }
+
+  names.unshift(current.name);
+  return names;
+}
+
 export function ecij(configuration?: Configuration | undefined | null): Plugin {
   const include = configuration?.include ?? JS_TS_FILE_REGEX;
   const exclude = configuration?.exclude ?? [NODE_MODULES_REGEX, D_TS_FILE_REGEX];
   const classPrefix = configuration?.classPrefix ?? 'css-';
 
   const parsedFileInfoCache = new Map<string, ParsedFileInfo>();
+
+  // Class names that were actually extracted, per file. A css`` class name is
+  // only safe to inline elsewhere once its rule made it into a stylesheet.
+  const extractedClassesPerFile = new Map<string, Set<string>>();
+
+  // Which module load each in-flight transform is currently awaiting
+  // (transform id -> awaited module ids, reference-counted). Used to detect
+  // when awaiting a `context.load` would close a wait cycle and deadlock the
+  // build (a load only settles once the module's transform returns).
+  const pendingLoads = new Map<string, Map<string, number>>();
+
+  function addPendingLoad(from: string, to: string) {
+    let targets = pendingLoads.get(from);
+    if (targets === undefined) {
+      targets = new Map();
+      pendingLoads.set(from, targets);
+    }
+    targets.set(to, (targets.get(to) ?? 0) + 1);
+  }
+
+  function removePendingLoad(from: string, to: string) {
+    const targets = pendingLoads.get(from);
+    const count = targets?.get(to);
+    if (targets === undefined || count === undefined) return;
+    if (count > 1) {
+      targets.set(to, count - 1);
+    } else {
+      targets.delete(to);
+      if (targets.size === 0) {
+        pendingLoads.delete(from);
+      }
+    }
+  }
 
   // Map to store generated CSS module IDs for each source file, used to mark modules as having side effects
   // Key: module id, Value: CSS module id
@@ -105,16 +233,34 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // to ensure consistent hashes across different build environments (Windows/Unix)
     const relativePath = relative(PROJECT_ROOT, filePath).replaceAll('\\', '/');
 
-    // Read the source file
-    const sourceText = code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
+    // Prefer the module graph's copy of the source. Note `ModuleInfo.code` is
+    // the *post-transform* code — acceptable here because only exports/values
+    // are read from these parses (positions are never used across files), and
+    // it also covers virtual modules that have no file on disk. Fall back to
+    // the disk for modules that haven't entered the graph yet; an unreadable
+    // module (e.g. virtual id) parses as empty, degrading to an
+    // UNRESOLVED_INTERPOLATION warning at the consumer.
+    const sourceText =
+      code ??
+      context.getModuleInfo(filePath)?.code ??
+      (await context.fs.readFile(filePath, { encoding: 'utf8' }).catch(() => ''));
 
     const parseResult = parseSync(filePath, sourceText);
     const declarations: Declaration[] = [];
-    const importedIdentifiers = new Map<string, { source: string; imported: string }>();
-    const exportNameToValueMap = new Map<string, string>();
-    const localNameToExportedNameMap = new Map<string, string>();
-    const taggedTemplateExpressionFromVariableDeclarator = new Set<TaggedTemplateExpression>();
-    let hasCSSTagImport = false;
+    const importedIdentifiers = new Map<string, ImportedIdentifier>();
+    const exportNameToValueMap = new Map<string, ExportRecord>();
+    const exportStarSources: string[] = [];
+    // Multiple exported names can reference the same local binding
+    // (e.g. `export { foo, foo as bar }`).
+    const localNameToExportedNamesMap = new Map<string, string[]>();
+    const processedTaggedTemplateExpressions = new Set<TaggedTemplateExpression>();
+    // Local bindings of `css` imported from 'ecij' (including aliases)
+    const cssTagNames = new Set<string>();
+    // Spans of default-import local bindings: oxc normalizes
+    // `import foo from 'mod'; export { foo };` into a re-export entry whose
+    // importName is the *local* binding (carrying its span) instead of
+    // 'default' — these spans let us map such entries back to the default.
+    const defaultImportLocalSpans = new Set<string>();
 
     // Scope tracking: root scope for module-level declarations
     const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
@@ -125,24 +271,44 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       declarations,
       importedIdentifiers,
       exportNameToValueMap,
+      exportStarSources,
     };
 
     parsedFileInfoCache.set(filePath, parsedInfo);
 
     // Collect imports
     for (const staticImport of parseResult.module.staticImports) {
+      const source = staticImport.moduleRequest.value;
+
       for (const entry of staticImport.entries) {
-        // TODO: support default and namespace imports
-        if (entry.importName.kind === 'Name') {
-          const source = staticImport.moduleRequest.value;
-          const imported = entry.importName.name!;
-          const localName = entry.localName.value;
+        // Skip TypeScript type-only imports
+        if (entry.isType) continue;
 
-          if (source === 'ecij' && imported === 'css' && localName === 'css') {
-            hasCSSTagImport = true;
+        const localName = entry.localName.value;
+
+        switch (entry.importName.kind) {
+          case 'Name': {
+            // `import { foo } from 'mod'` / `import { foo as bar } from 'mod'`
+            const imported = entry.importName.name!;
+
+            if (source === 'ecij' && imported === 'css') {
+              cssTagNames.add(localName);
+            }
+
+            importedIdentifiers.set(localName, { kind: 'named', source, imported });
+            break;
           }
-
-          importedIdentifiers.set(localName, { source, imported });
+          case 'Default': {
+            // `import foo from 'mod'`
+            defaultImportLocalSpans.add(`${entry.localName.start}:${entry.localName.end}`);
+            importedIdentifiers.set(localName, { kind: 'named', source, imported: 'default' });
+            break;
+          }
+          case 'NamespaceObject': {
+            // `import * as ns from 'mod'`
+            importedIdentifiers.set(localName, { kind: 'namespace', source });
+            break;
+          }
         }
       }
     }
@@ -150,34 +316,135 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // Collect exports
     for (const staticExport of parseResult.module.staticExports) {
       for (const entry of staticExport.entries) {
-        // TODO: handle re-exports
-        if (entry.importName.kind !== 'None') continue;
+        // Skip TypeScript type-only exports
+        if (entry.isType) continue;
 
-        // TODO: support default and namespace exports
-        if (entry.exportName.kind === 'Name' && entry.localName.kind === 'Name') {
-          const localName = entry.localName.name!;
-          const exportedName = entry.exportName.name!;
-          localNameToExportedNameMap.set(localName, exportedName);
+        const moduleRequest = entry.moduleRequest?.value;
+
+        // Re-exports (have a moduleRequest)
+        if (moduleRequest !== undefined) {
+          switch (entry.importName.kind) {
+            case 'Name': {
+              // `export { foo } from 'mod'`, `export { foo as bar } from 'mod'`,
+              // `export { default as foo } from 'mod'`, `export { foo as default } from 'mod'`
+              const exportedName =
+                entry.exportName.kind === 'Default' ? 'default' : entry.exportName.name!;
+              // `import foo from 'mod'; export { foo };` entries point at the
+              // local default-import binding — map them back to 'default'
+              // (see `defaultImportLocalSpans`).
+              const imported = defaultImportLocalSpans.has(
+                `${entry.importName.start}:${entry.importName.end}`,
+              )
+                ? 'default'
+                : entry.importName.name!;
+              exportNameToValueMap.set(exportedName, {
+                kind: 'reexport',
+                source: moduleRequest,
+                imported,
+              });
+              break;
+            }
+            case 'AllButDefault': {
+              // `export * from 'mod'` — does not include the default export
+              exportStarSources.push(moduleRequest);
+              break;
+            }
+            case 'All': {
+              // `export * as ns from 'mod'`
+              const exportedName = entry.exportName.name!;
+              exportNameToValueMap.set(exportedName, {
+                kind: 'namespace-reexport',
+                source: moduleRequest,
+              });
+              break;
+            }
+          }
+          continue;
+        }
+
+        // Local exports (no moduleRequest)
+        // `localName.kind === 'Default'` covers `export default <local-binding>`,
+        // `localName.kind === 'Name'` covers `export { x }` and `export { x as y }`.
+        if (
+          entry.exportName.kind !== 'None' &&
+          (entry.localName.kind === 'Name' || entry.localName.kind === 'Default') &&
+          entry.localName.name !== null
+        ) {
+          const localName = entry.localName.name;
+          // `entry.exportName.name` is null when `kind === 'Default'` (the name "default"
+          // is implicit in `export default <local>`).
+          const exportedName =
+            entry.exportName.kind === 'Default' ? 'default' : entry.exportName.name!;
+
+          // If the local name is actually an imported identifier, the export is
+          // a transitive re-export (`import { foo } from 'mod'; export default foo;`).
+          const importEntry = importedIdentifiers.get(localName);
+          if (importEntry !== undefined) {
+            if (importEntry.kind === 'named') {
+              exportNameToValueMap.set(exportedName, {
+                kind: 'reexport',
+                source: importEntry.source,
+                imported: importEntry.imported,
+              });
+            } else {
+              exportNameToValueMap.set(exportedName, {
+                kind: 'namespace-reexport',
+                source: importEntry.source,
+              });
+            }
+            continue;
+          }
+
+          // Map a locally-bound name to its exported names so we can record values
+          // in `exportNameToValueMap` once the binding's value is known.
+          const existing = localNameToExportedNamesMap.get(localName);
+          if (existing === undefined) {
+            localNameToExportedNamesMap.set(localName, [exportedName]);
+          } else {
+            existing.push(exportedName);
+          }
         }
       }
     }
 
-    function recordIdentifierWithValue(localName: string, value: string, scope = currentScope) {
+    function recordIdentifierWithValue(
+      localName: string,
+      value: string,
+      scope = currentScope,
+      fromCss = false,
+    ) {
       scope.identifiers.set(localName, value);
 
       // Only record exports for module-level (root scope) declarations
-      if (scope === rootScope && localNameToExportedNameMap.has(localName)) {
-        const exportedName = localNameToExportedNameMap.get(localName)!;
-        exportNameToValueMap.set(exportedName, value);
+      if (scope === rootScope && localNameToExportedNamesMap.has(localName)) {
+        for (const exportedName of localNameToExportedNamesMap.get(localName)!) {
+          exportNameToValueMap.set(exportedName, { kind: 'value', value, fromCss, localName });
+        }
       }
+    }
+
+    function isCssTagTemplate(node: TaggedTemplateExpression, scope: Scope): boolean {
+      if (!(node.tag.type === 'Identifier' && cssTagNames.has(node.tag.name))) {
+        return false;
+      }
+
+      // A local binding shadowing the imported tag means this is not the ecij tag
+      for (let current: Scope | null = scope; current !== null; current = current.parent) {
+        if (current.identifiers.has(node.tag.name)) {
+          return false;
+        }
+      }
+
+      return true;
     }
 
     function handleTaggedTemplateExpression(
       localName: string | undefined,
       node: TaggedTemplateExpression,
       scope = currentScope,
+      exportedAs?: string | undefined,
     ) {
-      if (!(hasCSSTagImport && node.tag.type === 'Identifier' && node.tag.name === 'css')) {
+      if (!isCssTagTemplate(node, scope)) {
         return;
       }
 
@@ -187,7 +454,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       // and identifier for consistency across builds.
       // The index is always used to avoid collisions with other variables
       // with the same name in the same file.
-      const hash = hashText(`${relativePath}:${index}:${localName}`);
+      const hash = hashText(`${relativePath}:${index}:${localName ?? exportedAs}`);
 
       const className = `${classPrefix}${hash}`;
 
@@ -200,7 +467,16 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
       // Record generated class names for css declarations
       if (localName !== undefined) {
-        recordIdentifierWithValue(localName, className, scope);
+        recordIdentifierWithValue(localName, className, scope, true);
+      } else if (exportedAs !== undefined && scope === rootScope) {
+        // `export default css\`...\`` has no local name but is reachable
+        // via the `default` export.
+        exportNameToValueMap.set(exportedAs, {
+          kind: 'value',
+          value: className,
+          fromCss: true,
+          localName: undefined,
+        });
       }
     }
 
@@ -405,23 +681,20 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         }
 
         const localName = node.id.name;
+        const init = node.init == null ? undefined : unwrapExpression(node.init);
 
-        switch (node.init?.type) {
-          case 'TaggedTemplateExpression':
-            if (node.init.tag.type === 'Identifier' && node.init.tag.name === 'css') {
-              taggedTemplateExpressionFromVariableDeclarator.add(node.init);
-              handleTaggedTemplateExpression(localName, node.init, targetScope);
-              return;
-            }
-            break;
+        if (init !== undefined) {
+          if (init.type === 'TaggedTemplateExpression' && isCssTagTemplate(init, currentScope)) {
+            processedTaggedTemplateExpressions.add(init);
+            handleTaggedTemplateExpression(localName, init, targetScope);
+            return;
+          }
 
-          case 'Literal':
-            if (typeof node.init.value === 'string' || typeof node.init.value === 'number') {
-              const value = String(node.init.value);
-              recordIdentifierWithValue(localName, value, targetScope);
-              return;
-            }
-            break;
+          const value = resolveStaticExpression(init);
+          if (value !== undefined) {
+            recordIdentifierWithValue(localName, value, targetScope);
+            return;
+          }
         }
 
         // Record as unknown value so it shadows outer variables
@@ -429,14 +702,59 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       },
 
       TaggedTemplateExpression(node) {
-        if (!taggedTemplateExpressionFromVariableDeclarator.has(node)) {
+        if (!processedTaggedTemplateExpressions.has(node)) {
           // No variable name for inline expressions
           handleTaggedTemplateExpression(undefined, node);
+        }
+      },
+
+      // `export default <expr>` — handle css tagged templates and static
+      // string/number expressions. Identifiers reach the default export through
+      // the staticExports loop above (which records `default` in
+      // `localNameToExportedNamesMap`); function/class declarations have no
+      // static value and are skipped by both branches.
+      ExportDefaultDeclaration(node) {
+        const declaration =
+          node.declaration.type === 'FunctionDeclaration' ||
+          node.declaration.type === 'ClassDeclaration' ||
+          node.declaration.type === 'TSInterfaceDeclaration'
+            ? undefined
+            : unwrapExpression(node.declaration);
+        if (declaration === undefined) return;
+
+        if (
+          declaration.type === 'TaggedTemplateExpression' &&
+          isCssTagTemplate(declaration, currentScope)
+        ) {
+          processedTaggedTemplateExpressions.add(declaration);
+          handleTaggedTemplateExpression(undefined, declaration, currentScope, 'default');
+          return;
+        }
+
+        const value = resolveStaticExpression(declaration);
+        if (value !== undefined) {
+          exportNameToValueMap.set('default', {
+            kind: 'value',
+            value,
+            fromCss: false,
+            localName: undefined,
+          });
         }
       },
     });
 
     visitor.visit(parseResult.program);
+
+    // Explicit exports that never received a static value must still shadow
+    // `export *` sources (per ESM, explicit exports win over star re-exports),
+    // so mark them as present-but-unresolvable.
+    for (const [localName, exportedNames] of localNameToExportedNamesMap) {
+      for (const exportedName of exportedNames) {
+        if (!exportNameToValueMap.has(exportedName)) {
+          exportNameToValueMap.set(exportedName, { kind: 'unresolved', localName });
+        }
+      }
+    }
 
     return parsedInfo;
   }
@@ -469,6 +787,194 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     }> = [];
     const stylesheetDependencies = new Set<string>();
 
+    // True if awaiting `context.load(targetFilePath)` can never settle: the
+    // target is this module, or its transform is (transitively) awaiting a
+    // load of this module.
+    function loadWouldDeadlock(targetFilePath: string): boolean {
+      const queue = [targetFilePath];
+      const seen = new Set<string>();
+
+      while (queue.length !== 0) {
+        const current = queue.pop()!;
+        if (current === filePath) return true;
+        if (seen.has(current)) continue;
+        seen.add(current);
+        const targets = pendingLoads.get(current);
+        if (targets !== undefined) {
+          queue.push(...targets.keys());
+        }
+      }
+
+      return false;
+    }
+
+    // Resolve a `source` import specifier relative to `importer` and ensure
+    // the target module has been parsed (so its caches are populated).
+    async function resolveImportedFile(
+      source: string,
+      importer: string,
+    ): Promise<string | undefined> {
+      const resolvedId = await context.resolve(source, importer);
+      // External modules cannot be parsed for static values
+      if (resolvedId == null || resolvedId.external !== false) return undefined;
+
+      const targetFilePath = stripQuery(resolvedId.id);
+
+      // Re-run this file's transform when the dependency changes in watch
+      // mode, since its values are baked into this file's output
+      if (!targetFilePath.startsWith('\0')) {
+        context.addWatchFile(targetFilePath);
+      }
+
+      // Loading a module that is (transitively) awaiting this module's own
+      // transform would deadlock — e.g. a barrel re-exporting the file
+      // currently being transformed. Its parse info is served from the cache
+      // (or disk) instead. Loads of independent in-flight modules are awaited
+      // normally so their extraction results are complete before use.
+      if (loadWouldDeadlock(targetFilePath)) {
+        return targetFilePath;
+      }
+
+      addPendingLoad(filePath, targetFilePath);
+      try {
+        // populate the cache for the imported file
+        await context.load(resolvedId);
+      } finally {
+        removePendingLoad(filePath, targetFilePath);
+      }
+
+      return targetFilePath;
+    }
+
+    // A statically-resolved export: a concrete value, a module namespace
+    // (`export * as ns from 'mod'`), or a name that exists but has no static
+    // value. `origin` identifies the terminal binding, so the `export *`
+    // ambiguity check can tell two paths to the same binding apart from
+    // genuinely conflicting ones. `files` lists the modules traversed to reach
+    // the value; their stylesheets must be pulled into the consumer.
+    type ResolvedExport =
+      | { kind: 'value'; value: string; origin: string; files: readonly string[] }
+      | { kind: 'namespace'; filePath: string; files: readonly string[] }
+      | { kind: 'unresolved'; origin: string };
+
+    // Resolve `exportName` from `targetFilePath`, following re-export chains
+    // (`export { x } from 'mod'`) and `export *` aggregations.
+    async function resolveExportTarget(
+      targetFilePath: string,
+      exportName: string,
+      visited: Set<string>,
+    ): Promise<ResolvedExport | undefined> {
+      // Guard against cyclic re-export chains
+      const cacheKey = `${targetFilePath}::${exportName}`;
+      if (visited.has(cacheKey)) return undefined;
+      visited.add(cacheKey);
+
+      const { exportNameToValueMap, exportStarSources } = await parseFile(context, targetFilePath);
+
+      const record = exportNameToValueMap.get(exportName);
+      if (record !== undefined) {
+        // Key the binding by its local name when known: two export aliases of
+        // the same binding reached through different `export *` paths are not
+        // ambiguous per ECMA-262 ResolveExport.
+        const origin =
+          record.kind === 'value' || record.kind === 'unresolved'
+            ? `${targetFilePath}::${record.localName ?? exportName}`
+            : cacheKey;
+
+        switch (record.kind) {
+          case 'value':
+            // css`` class names are only usable if their declaration was
+            // actually extracted; a skipped (unresolvable interpolations) or
+            // filtered-out (e.g. node_modules) declaration would leave the
+            // class without a rule in the emitted stylesheets.
+            if (record.fromCss && !extractedClassesPerFile.get(targetFilePath)?.has(record.value)) {
+              return { kind: 'unresolved', origin };
+            }
+            return {
+              kind: 'value',
+              value: record.value,
+              origin,
+              files: [targetFilePath],
+            };
+          case 'reexport': {
+            const nextFilePath = await resolveImportedFile(record.source, targetFilePath);
+            if (nextFilePath === undefined) return undefined;
+            const target = await resolveExportTarget(nextFilePath, record.imported, visited);
+            if (target === undefined || target.kind === 'unresolved') return target;
+            return { ...target, files: [targetFilePath, ...target.files] };
+          }
+          case 'namespace-reexport': {
+            const namespaceFilePath = await resolveImportedFile(record.source, targetFilePath);
+            if (namespaceFilePath === undefined) return undefined;
+            return { kind: 'namespace', filePath: namespaceFilePath, files: [targetFilePath] };
+          }
+          case 'unresolved':
+            return { kind: 'unresolved', origin };
+        }
+      }
+
+      // `export * from 'mod'` — excludes the default export. All sources are
+      // probed: per ESM, a name provided by multiple star sources (through
+      // different bindings) is ambiguous and not exported at all.
+      if (exportName !== 'default') {
+        const candidates = new Map<string, ResolvedExport>();
+
+        for (const source of exportStarSources) {
+          const nextFilePath = await resolveImportedFile(source, targetFilePath);
+          if (nextFilePath === undefined) continue;
+          const target = await resolveExportTarget(nextFilePath, exportName, visited);
+          if (target === undefined) continue;
+          const targetKey = target.kind === 'namespace' ? `ns:${target.filePath}` : target.origin;
+          candidates.set(targetKey, target);
+        }
+
+        if (candidates.size === 1) {
+          const target = candidates.values().next().value!;
+          if (target.kind === 'unresolved') return target;
+          return { ...target, files: [targetFilePath, ...target.files] };
+        }
+        if (candidates.size > 1) {
+          // Ambiguous `export *` name
+          return { kind: 'unresolved', origin: cacheKey };
+        }
+      }
+
+      return undefined;
+    }
+
+    function addStylesheetDependencies(files: readonly string[]) {
+      for (const file of files) {
+        const stylesheet = stylesheetImportPerFile.get(file);
+        if (stylesheet !== undefined) {
+          stylesheetDependencies.add(stylesheet);
+        }
+      }
+    }
+
+    // Resolve `exportName` from `targetFilePath` to a static value. Stylesheet
+    // dependencies are recorded only when resolution succeeds, so probing a
+    // module that does not provide the value never drags its CSS in.
+    async function resolveExportValue(
+      targetFilePath: string,
+      exportName: string,
+    ): Promise<string | undefined> {
+      const target = await resolveExportTarget(targetFilePath, exportName, new Set());
+      if (target === undefined || target.kind !== 'value') return undefined;
+
+      addStylesheetDependencies(target.files);
+      return target.value;
+    }
+
+    // True if `name` is bound anywhere along the scope chain (i.e. shadows imports).
+    function isBoundInScopeChain(name: string, scope: Scope): boolean {
+      let current: Scope | null = scope;
+      while (current !== null) {
+        if (current.identifiers.has(name)) return true;
+        current = current.parent;
+      }
+      return false;
+    }
+
     // Helper to resolve a value from an identifier, walking up the scope chain
     async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
       if (scope.identifiers.has(identifierName)) {
@@ -484,35 +990,82 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       }
 
       // Check if it's an imported identifier
-      if (importedIdentifiers.has(identifierName)) {
-        const { source, imported } = importedIdentifiers.get(identifierName)!;
+      const importEntry = importedIdentifiers.get(identifierName);
+      if (importEntry === undefined) return undefined;
 
-        // Resolve the import path relative to the importer
-        const resolvedId = await context.resolve(source, filePath);
+      // Namespace imports cannot be resolved to a single value here —
+      // they need to be accessed via member expression (`ns.foo`).
+      if (importEntry.kind === 'namespace') return undefined;
 
-        if (resolvedId != null) {
-          // populate the cache for the imported file
-          await context.load(resolvedId);
+      const importedFilePath = await resolveImportedFile(importEntry.source, filePath);
+      if (importedFilePath === undefined) return undefined;
 
-          const { id } = resolvedId;
+      return resolveExportValue(importedFilePath, importEntry.imported);
+    }
 
-          const { exportNameToValueMap } = await parseFile(context, id);
+    // Resolve `${ns.foo}` / `${ns.inner.foo}` member paths where the base
+    // identifier is a namespace import (`import * as ns from 'mod'`) or a
+    // named import that (transitively) resolves to a namespace re-export
+    // (`export * as ns from 'mod'`).
+    async function resolveMemberPath(
+      names: readonly string[],
+      scope: Scope,
+    ): Promise<string | undefined> {
+      const namespaceName = names[0]!;
 
-          if (exportNameToValueMap.has(imported)) {
-            if (stylesheetImportPerFile.has(id)) {
-              stylesheetDependencies.add(stylesheetImportPerFile.get(id)!);
-            }
-            return exportNameToValueMap.get(imported)!;
-          }
-        }
+      // A local binding shadows the import
+      if (isBoundInScopeChain(namespaceName, scope)) return undefined;
+
+      const importEntry = importedIdentifiers.get(namespaceName);
+      if (importEntry === undefined) return undefined;
+
+      const importedFilePath = await resolveImportedFile(importEntry.source, filePath);
+      if (importedFilePath === undefined) return undefined;
+
+      const traversedFiles: string[] = [];
+      let namespaceFilePath: string;
+
+      if (importEntry.kind === 'namespace') {
+        namespaceFilePath = importedFilePath;
+      } else {
+        // Named import — it must resolve to a namespace re-export
+        const target = await resolveExportTarget(importedFilePath, importEntry.imported, new Set());
+        if (target === undefined || target.kind !== 'namespace') return undefined;
+        traversedFiles.push(...target.files);
+        namespaceFilePath = target.filePath;
       }
 
-      return;
+      // Intermediate members must each resolve to a nested namespace
+      // (`export * as inner from 'mod'`); the final member is the value.
+      for (let i = 1; i < names.length - 1; i++) {
+        const target = await resolveExportTarget(namespaceFilePath, names[i]!, new Set());
+        if (target === undefined || target.kind !== 'namespace') return undefined;
+        traversedFiles.push(...target.files);
+        namespaceFilePath = target.filePath;
+      }
+
+      const target = await resolveExportTarget(
+        namespaceFilePath,
+        names[names.length - 1]!,
+        new Set(),
+      );
+      if (target === undefined || target.kind !== 'value') return undefined;
+
+      addStylesheetDependencies([...traversedFiles, ...target.files]);
+      return target.value;
     }
+
+    // Class names extracted from this file so far. Registered up front and
+    // filled incrementally, so concurrent/cyclic resolutions of this module's
+    // exports see classes as soon as their declarations are extracted.
+    const extractedClasses = new Set<string>();
+    extractedClassesPerFile.set(filePath, extractedClasses);
 
     // Helper to add a processed CSS declaration
     function addProcessedDeclaration(declaration: Declaration, cssContent: string) {
       const { className, node } = declaration;
+
+      extractedClasses.add(className);
 
       cssExtractions.push({
         className,
@@ -536,74 +1089,123 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       addProcessedDeclaration(declaration, cssContent);
     }
 
-    // Pass 2: With interpolations using resolved local references
-    for (const declaration of declarations) {
-      if (!declaration.hasInterpolations) continue;
+    // Class names generated for this file's own declarations — references to
+    // them only resolve once the corresponding declaration is extracted.
+    const ownClassNames = new Set(declarations.map(({ className }) => className));
 
+    // Resolve all interpolations of one declaration.
+    // - 'extracted': all resolved, declaration recorded
+    // - 'deferred': blocked on a same-file class that is not extracted (yet);
+    //   retried unless `finalAttempt`, in which case it warns and skips
+    // - 'skipped': unresolvable, warning emitted
+    async function processInterpolatedDeclaration(
+      declaration: Declaration,
+      finalAttempt: boolean,
+    ): Promise<'extracted' | 'deferred' | 'skipped'> {
       const { quasis, expressions } = declaration.node.quasi;
 
       let cssContent = '';
-      let allResolved = true;
 
       for (let i = 0; i < quasis.length; i++) {
         cssContent += quasis[i]!.value.raw;
 
         if (i < expressions.length) {
-          const expression = expressions[i]!;
+          const expression = unwrapExpression(expressions[i]!);
 
-          let resolvedValue: string | undefined;
+          let resolvedValue = resolveStaticExpression(expression);
 
-          if (
-            expression.type === 'Literal' &&
-            (typeof expression.value === 'string' || typeof expression.value === 'number')
-          ) {
-            resolvedValue = String(expression.value);
-          } else if (
-            expression.type === 'UnaryExpression' &&
-            (expression.operator === '-' || expression.operator === '+') &&
-            expression.argument.type === 'Literal' &&
-            typeof expression.argument.value === 'number'
-          ) {
-            resolvedValue = String(
-              expression.operator === '-' ? -expression.argument.value : expression.argument.value,
-            );
-          } else if (expression.type === 'Identifier') {
-            resolvedValue = await resolveValue(expression.name, declaration.scope);
+          if (resolvedValue === undefined) {
+            const memberPath =
+              expression.type === 'MemberExpression'
+                ? flattenMemberExpressionPath(expression)
+                : undefined;
 
-            if (resolvedValue === undefined) {
-              // Cannot resolve - skip this entire css`` block
+            if (expression.type === 'Identifier') {
+              resolvedValue = await resolveValue(expression.name, declaration.scope);
+
+              // A class name of a same-file declaration that has not been
+              // extracted: defer in case it is a forward reference whose
+              // declaration is still pending; once no progress can be made
+              // it is a failed extraction and must not leak (no rule exists).
+              if (
+                resolvedValue !== undefined &&
+                ownClassNames.has(resolvedValue) &&
+                !extractedClasses.has(resolvedValue)
+              ) {
+                if (!finalAttempt) return 'deferred';
+                resolvedValue = undefined;
+              }
+
+              if (resolvedValue === undefined) {
+                // Cannot resolve - skip this entire css`` block
+                context.warn(
+                  {
+                    pluginCode: 'UNRESOLVED_INTERPOLATION',
+                    message: `skipped CSS extraction — could not resolve "${expression.name}" to a static string or number`,
+                  },
+                  expression.start,
+                );
+                return 'skipped';
+              }
+            } else if (memberPath !== undefined) {
+              // Namespace member access: `${ns.foo}` / `${ns.inner.foo}`
+              resolvedValue = await resolveMemberPath(memberPath, declaration.scope);
+
+              if (resolvedValue === undefined) {
+                context.warn(
+                  {
+                    pluginCode: 'UNRESOLVED_INTERPOLATION',
+                    message: `skipped CSS extraction — could not resolve "${memberPath.join('.')}" to a static string or number`,
+                  },
+                  expression.start,
+                );
+                return 'skipped';
+              }
+            } else {
+              // Complex expression - skip this entire css`` block
               context.warn(
                 {
-                  pluginCode: 'UNRESOLVED_INTERPOLATION',
-                  message: `skipped CSS extraction — could not resolve "${expression.name}" to a static string or number`,
+                  pluginCode: 'COMPLEX_INTERPOLATION',
+                  message:
+                    'skipped CSS extraction — interpolation is not a static string, number, or identifier',
                 },
                 expression.start,
               );
-              allResolved = false;
-              break;
+              return 'skipped';
             }
-          } else {
-            // Complex expression - skip this entire css`` block
-            context.warn(
-              {
-                pluginCode: 'COMPLEX_INTERPOLATION',
-                message:
-                  'skipped CSS extraction — interpolation is not a static string, number, or identifier',
-              },
-              expression.start,
-            );
-            allResolved = false;
-            break;
           }
 
           cssContent += resolvedValue;
         }
       }
 
-      // Only process if all interpolations were resolved
-      if (allResolved) {
-        addProcessedDeclaration(declaration, cssContent);
+      addProcessedDeclaration(declaration, cssContent);
+      return 'extracted';
+    }
+
+    // Pass 2: With interpolations using resolved local references.
+    // Declarations blocked on same-file forward references are retried until
+    // no further progress is made.
+    let remaining = declarations.filter(({ hasInterpolations }) => hasInterpolations);
+
+    while (remaining.length !== 0) {
+      const deferred: Declaration[] = [];
+
+      for (const declaration of remaining) {
+        if ((await processInterpolatedDeclaration(declaration, false)) === 'deferred') {
+          deferred.push(declaration);
+        }
       }
+
+      if (deferred.length === remaining.length) {
+        // No progress — the deferred declarations are unresolvable
+        for (const declaration of deferred) {
+          await processInterpolatedDeclaration(declaration, true);
+        }
+        break;
+      }
+
+      remaining = deferred;
     }
 
     if (replacements.length === 0) {
@@ -654,8 +1256,23 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     buildEnd() {
       // Clear caches between builds
       parsedFileInfoCache.clear();
+      extractedClassesPerFile.clear();
+      pendingLoads.clear();
       stylesheetImportPerFile.clear();
       extractedCssPerFile.clear();
+    },
+
+    watchChange(id) {
+      // Evict the per-file caches so the next transform re-reads the changed
+      // module instead of serving stale parsed values
+      parsedFileInfoCache.delete(id);
+      extractedClassesPerFile.delete(id);
+
+      const cssModuleId = stylesheetImportPerFile.get(id);
+      if (cssModuleId !== undefined) {
+        stylesheetImportPerFile.delete(id);
+        extractedCssPerFile.delete(cssModuleId);
+      }
     },
 
     resolveId(id) {
@@ -697,8 +1314,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         }
 
         // Remove query parameters from the ID
-        const queryIndex = id.indexOf('?');
-        const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
+        const cleanId = stripQuery(id);
 
         // Extract CSS from the code
         const { transformedCode, hasExtractions, cssContent, stylesheetDependencies } =
@@ -720,9 +1336,10 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         const hash = hashText(cssContent);
         const cssModuleId = `${cleanId}.${hash}.css`;
 
-        // Store the CSS extractions for this file
+        // Store the CSS extractions for this file. Keyed by the query-less id
+        // so cross-module resolution and watchChange eviction can find them.
         extractedCssPerFile.set(cssModuleId, cssContent);
-        stylesheetImportPerFile.set(id, cssModuleId);
+        stylesheetImportPerFile.set(cleanId, cssModuleId);
 
         const importStatements: string[] = [];
 

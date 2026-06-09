@@ -1,12 +1,16 @@
 import { ecij, type Configuration } from 'ecij/plugin';
-import type { RolldownLog } from 'rolldown';
+import { rolldown, type RolldownLog } from 'rolldown';
 import { build } from 'vite';
 import { expect, test } from 'vitest';
 
-const normalize = (path: string) => path.replace(/^.*\/test\//, 'test/');
+const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
 
 // Helper to run a vite build with the ecij plugin
-async function buildWithPlugin(entry: string, pluginOptions?: Configuration) {
+async function buildWithPlugin(
+  entry: string,
+  pluginOptions?: Configuration,
+  buildOptions?: { external?: string[] },
+) {
   const logs: RolldownLog[] = [];
 
   const output = await build({
@@ -18,6 +22,7 @@ async function buildWithPlugin(entry: string, pluginOptions?: Configuration) {
       minify: false,
       write: false,
       rolldownOptions: {
+        ...(buildOptions?.external === undefined ? {} : { external: buildOptions.external }),
         onLog(level, log, handler) {
           if (log.plugin === 'ecij') {
             // Normalize absolute paths so snapshots are stable across machines
@@ -1363,6 +1368,892 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       },
     ]
   `);
+});
+
+test('default, namespace, and re-exported imports/exports', async () => {
+  const fixturePath = './test/fixtures/import-export.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // Covers:
+  // - `export default css\`...\``
+  // - `export default <literal>` and `export default <local>`
+  // - `import defaultName from 'mod'`
+  // - `import * as ns from 'mod'` with `${ns.foo}` member access
+  // - `export { x } from 'mod'` and `export { x as y } from 'mod'`
+  // - `export { default as foo } from 'mod'`
+  // - `export { foo as default } from 'mod'`
+  // - `export * from 'mod'` (excludes the default export)
+  // - `export * as ns from 'mod'` accessed through a named import
+  // - type-only imports/exports (`import type { T }`, `import { type T, x }`,
+  //   `export type { T } from`, `export { type x } from`, `export type * from`)
+  //   are erased: `typedTone` resolves to the star-provided value ('salmon'),
+  //   never the type-only decoy re-export ('WRONG-decoy-value')
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/import-export.input.ts
+    var usesDefaultCssClass = "css-b0b5a725";
+    var usesDefaultLiteral = "css-cba05f2f";
+    var usesDefaultLocalClass = "css-c157f391";
+    var usesNamespaceImport = "css-f1972a30";
+    var usesReexportNamed = "css-068fc5a6";
+    var usesReexportDefaultAsNamed = "css-49a2e17a";
+    var usesReexportNamedAsDefault = "css-6677b97e";
+    var usesStarReexport = "css-51c1a4dd";
+    var usesNamespaceReexport = "css-258eae2b";
+    var import_export_input_default = "css-00ba416b";
+    var usesTypeOnlyBarrel = "css-6a439424";
+    //#endregion
+    export { import_export_input_default as default, usesDefaultCssClass, usesDefaultLiteral, usesDefaultLocalClass, usesNamespaceImport, usesNamespaceReexport, usesReexportDefaultAsNamed, usesReexportNamed, usesReexportNamedAsDefault, usesStarReexport, usesTypeOnlyBarrel };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-2c1bb3ca {
+      /* default css */
+      border: 2px dashed teal;
+    }.css-be832145 {
+      /* default-local */
+      display: grid;
+    }.css-9cfab70f {
+      /* accent */
+      background: crimson;
+      font-size: 14px;
+    }.css-b0b5a725 {
+      /* uses default-css */
+      &.css-2c1bb3ca {
+        color: red;
+      }
+    }
+
+    .css-cba05f2f {
+      /* uses default-literal */
+      color: royalblue;
+    }
+
+    .css-c157f391 {
+      /* uses default-local */
+      &.css-be832145 {
+        border: 1px solid;
+      }
+    }
+
+    .css-f1972a30 {
+      /* uses namespace */
+      background: crimson;
+      font-size: 14px;
+
+      &.css-9cfab70f {
+        color: red;
+      }
+    }
+
+    .css-068fc5a6 {
+      /* uses reexport-named */
+      color: crimson;
+
+      &.css-9cfab70f {
+        color: red;
+      }
+    }
+
+    .css-49a2e17a {
+      /* uses reexport-default-as-named */
+      &.css-2c1bb3ca {
+        color: red;
+      }
+    }
+
+    .css-6677b97e {
+      /* uses reexport-named-as-default */
+      color: crimson;
+    }
+
+    .css-51c1a4dd {
+      /* uses star-reexport */
+      color: crimson;
+
+      &.css-9cfab70f {
+        color: red;
+      }
+    }
+
+    .css-258eae2b {
+      /* uses namespace-reexport */
+      background: crimson;
+
+      &.css-9cfab70f {
+        color: red;
+      }
+    }
+
+    .css-00ba416b {
+      /* entry-default */
+      font-size: 12px;
+    }
+
+    .css-6a439424 {
+      /* uses type-only-barrel */
+      color: salmon;
+      outline-color: peru;
+      width: 6px;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('barrel files: `export *` aggregation and explicit-over-star precedence', async () => {
+  const fixturePath = './test/fixtures/barrel.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // - `aColor` is re-exported from `./barrel-a` via `export *` *and* declared
+  //   locally as `export const aColor = 'locally-overridden'` in the barrel.
+  //   The explicit local export must win.
+  // - `aClass` resolves through `export * from './barrel-a'`
+  // - `bColor`/`bClass` resolve through `export * from './barrel-b'`
+  // - `shared` is exposed by both `export { shared } from './barrel-c'` (c-wins)
+  //   and `export * from './barrel-b'` (b-loses); explicit re-export must win.
+  // - `barrel-nested.ts` re-exports `aClass` again — it should not double up.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/barrel.input.ts
+    var usesBarrelA = "css-6a28b4b6";
+    var usesBarrelB = "css-2f855474";
+    var usesBarrelShared = "css-7c6ff0f4";
+    var usesBarrelDeep = "css-147baedb";
+    //#endregion
+    export { usesBarrelA, usesBarrelB, usesBarrelDeep, usesBarrelShared };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-1936cac6 {
+      /* a */
+      color: aqua;
+    }.css-ad2da54d {
+      /* b */
+      color: beige;
+    }.css-6a28b4b6 {
+      /* uses-a */
+      color: locally-overridden;
+
+      &.css-1936cac6 {
+        color: red;
+      }
+    }
+
+    .css-2f855474 {
+      /* uses-b */
+      color: beige;
+
+      &.css-ad2da54d {
+        color: red;
+      }
+    }
+
+    .css-7c6ff0f4 {
+      /* uses-shared */
+      color: c-wins;
+    }
+
+    .css-147baedb {
+      /* uses-deep */
+      color: darkcyan;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('namespace edge cases: unknown member, namespace-as-scalar, ns-reexport-as-scalar', async () => {
+  const fixturePath = './test/fixtures/namespace-edge-cases.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // - `${ns.unknownMember}` should warn that the member couldn't be resolved.
+  // - `${ns}` (namespace import used as scalar) should warn — namespaces have no
+  //   single-value reduction.
+  // - `${reexportedNs}` (a namespace reached through `export * as`, used as
+  //   scalar) should warn for the same reason.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region \\0rolldown/runtime.js
+    var __defProp = Object.defineProperty;
+    var __exportAll = (all, no_symbols) => {
+    	let target = {};
+    	for (var name in all) __defProp(target, name, {
+    		get: all[name],
+    		enumerable: true
+    	});
+    	if (!no_symbols) __defProp(target, Symbol.toStringTag, { value: "Module" });
+    	return target;
+    };
+    //#endregion
+    //#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/named-styles.ts
+    var named_styles_exports = /* @__PURE__ */ __exportAll({
+    	accentClass: () => accentClass,
+    	accentColor: () => accentColor,
+    	accentSize: () => 14
+    });
+    var accentColor = "crimson";
+    var accentClass = "css-9cfab70f";
+    //#endregion
+    //#region test/fixtures/namespace-edge-cases.input.ts
+    var missingMember = css\`
+      color: \${void 0};
+    \`;
+    var namespaceAsScalar = css\`
+      color: \${named_styles_exports};
+    \`;
+    var namespaceReexportAsScalar = css\`
+      color: \${named_styles_exports};
+    \`;
+    var starDefaultAsScalar = css\`
+      color: \${void 0};
+    \`;
+    //#endregion
+    export { missingMember, namespaceAsScalar, namespaceReexportAsScalar, starDefaultAsScalar };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-9cfab70f {
+      /* accent */
+      background: crimson;
+      font-size: 14px;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "4: import * as starOnly from "./star-over-default";
+    5: export const missingMember = css\`
+    6:   color: \${namedStyles.unknownMember};
+                  ^
+    7: \`;
+    8: export const namespaceAsScalar = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/namespace-edge-cases.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/namespace-edge-cases.input.ts",
+          "line": 6,
+        },
+        "message": "skipped CSS extraction — could not resolve "namedStyles.unknownMember" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 217,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": " 7: \`;
+     8: export const namespaceAsScalar = css\`
+     9:   color: \${namedStyles};
+                   ^
+    10: \`;
+    11: export const namespaceReexportAsScalar = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/namespace-edge-cases.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/namespace-edge-cases.input.ts",
+          "line": 9,
+        },
+        "message": "skipped CSS extraction — could not resolve "namedStyles" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 297,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "10: \`;
+    11: export const namespaceReexportAsScalar = css\`
+    12:   color: \${styles};
+                   ^
+    13: \`;
+    14: export const starDefaultAsScalar = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/namespace-edge-cases.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/namespace-edge-cases.input.ts",
+          "line": 12,
+        },
+        "message": "skipped CSS extraction — could not resolve "styles" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 371,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "13: \`;
+    14: export const starDefaultAsScalar = css\`
+    15:   color: \${starOnly.default};
+                   ^
+    16: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/namespace-edge-cases.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/namespace-edge-cases.input.ts",
+          "line": 15,
+        },
+        "message": "skipped CSS extraction — could not resolve "starOnly.default" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 434,
+      },
+    ]
+  `);
+});
+
+test('self-referencing barrel resolves without deadlocking', async () => {
+  const fixturePath = './test/fixtures/self-barrel.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // The barrel `export *`s the entry itself; probing that star source must not
+  // `context.load` the in-flight module (which would deadlock the build), and
+  // `tokenColor` must still resolve through the barrel's other star source.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/self-barrel.input.ts
+    var selfBarrelClass = "css-a96da074";
+    //#endregion
+    export { selfBarrelClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-a96da074 {
+      /* self-barrel */
+      color: teal;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('external modules in `export *` chains are skipped gracefully', async () => {
+  const fixturePath = './test/fixtures/external-star.input.ts';
+  const result = await buildWithPlugin(fixturePath, undefined, { external: ['@acme/tokens'] });
+
+  // The barrel's first star source is external — it cannot be parsed and must
+  // not be loaded; `brandColor` resolves from the local star source instead.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/external-star.input.ts
+    var usesExternalBarrel = "css-ff9a316e";
+    //#endregion
+    export { usesExternalBarrel };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-ff9a316e {
+      /* uses external-barrel */
+      color: goldenrod;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('explicit exports with non-static values shadow `export *` sources', async () => {
+  const fixturePath = './test/fixtures/star-precedence.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // The barrel explicitly exports `tone = computeTone()` (not statically
+  // resolvable) while `export *` provides a static `tone` from another module.
+  // Per ESM the explicit export wins, so the plugin must warn and skip rather
+  // than bake the star source's 'aqua'.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/star-precedence.ts
+    function computeTone() {
+    	return "runtime-only";
+    }
+    //#endregion
+    //#region test/fixtures/star-precedence.input.ts
+    var usesShadowedTone = css\`
+      /* uses shadowed-tone */
+      color: \${computeTone()};
+    \`;
+    //#endregion
+    export { usesShadowedTone };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`undefined`);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "3: export const usesShadowedTone = css\`
+    4:   /* uses shadowed-tone */
+    5:   color: \${tone};
+                  ^
+    6: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/star-precedence.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/star-precedence.input.ts",
+          "line": 5,
+        },
+        "message": "skipped CSS extraction — could not resolve "tone" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 145,
+      },
+    ]
+  `);
+});
+
+test('import/export hardening: default passthrough, chained namespaces, static default exports', async () => {
+  const fixturePath = './test/fixtures/import-export-hardening.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // Covers:
+  // - `import d from 'mod'; export { d };` resolving to mod's *default* export
+  //   (not the decoy named export with the same name)
+  // - `export * as ns` reached through a chained named re-export
+  // - `export * as ns` reached through an `export *` hop
+  // - nested namespace member access (`ns.inner.member`)
+  // - `export default -5` (signed number literal)
+  // - `export default css\`...\` as string` (wrapped css tagged template)
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/import-export-hardening.input.ts
+    var usesPassthroughDefault = "css-f8cd4db8";
+    var usesChainedNamespace = "css-dc153ecc";
+    var usesStarChainedNamespace = "css-d6528605";
+    var usesNestedNamespaceMember = "css-e6f5d50f";
+    var usesNegativeDefault = "css-8f4583c7";
+    var usesWrappedDefaultCss = "css-12e33db5";
+    //#endregion
+    export { usesChainedNamespace, usesNegativeDefault, usesNestedNamespaceMember, usesPassthroughDefault, usesStarChainedNamespace, usesWrappedDefaultCss };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-9cfab70f {
+      /* accent */
+      background: crimson;
+      font-size: 14px;
+    }.css-fb083c1c {
+      /* wrapped-default */
+      display: flex;
+    }.css-f8cd4db8 {
+      /* uses passthrough-default */
+      color: mediumseagreen;
+    }
+
+    .css-dc153ecc {
+      /* uses chained-namespace */
+      color: crimson;
+    }
+
+    .css-d6528605 {
+      /* uses star-chained-namespace */
+      font-size: 14px;
+    }
+
+    .css-e6f5d50f {
+      /* uses nested-namespace-member */
+      background: crimson;
+
+      &.css-9cfab70f {
+        color: red;
+      }
+    }
+
+    .css-8f4583c7 {
+      /* uses negative-default */
+      margin: -5px;
+    }
+
+    .css-12e33db5 {
+      /* uses wrapped-default-css */
+      &.css-fb083c1c {
+        color: red;
+      }
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('ambiguous `export *` names are not silently resolved', async () => {
+  const fixturePath = './test/fixtures/ambiguous.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // `accent` is provided by two star sources with different bindings — per
+  // ESM the name is ambiguous and excluded from the namespace object, so the
+  // plugin must warn instead of picking the first source's value.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/ambiguous.input.ts
+    var usesAmbiguous = css\`
+      color: \${void 0};
+    \`;
+    //#endregion
+    export { usesAmbiguous };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`undefined`);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "2: import * as ambiguous from "./ambiguous-barrel";
+    3: export const usesAmbiguous = css\`
+    4:   color: \${ambiguous.accent};
+                  ^
+    5: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/ambiguous.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/ambiguous.input.ts",
+          "line": 4,
+        },
+        "message": "skipped CSS extraction — could not resolve "ambiguous.accent" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 122,
+      },
+    ]
+  `);
+});
+
+test('class names from skipped extractions do not leak to consumers', async () => {
+  const fixturePath = './test/fixtures/broken-export.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // broken-export's declaration fails extraction (complex interpolation), so
+  // its class has no rule anywhere — the consumer must warn and skip instead
+  // of inlining a phantom class name.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/broken-export.ts
+    function dynamicPadding() {
+    	return 4;
+    }
+    //#endregion
+    //#region test/fixtures/broken-export.input.ts
+    var usesBrokenClass = css\`
+      &.\${css\`
+      padding: \${dynamicPadding()}px;
+    \`} {
+        color: red;
+      }
+    \`;
+    //#endregion
+    export { usesBrokenClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`undefined`);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "4: }
+    5: export const brokenClass = css\`
+    6:   padding: \${dynamicPadding()}px;
+                    ^
+    7: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/broken-export.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/broken-export.ts",
+          "line": 6,
+        },
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "plugin": "ecij",
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 114,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "2: import { brokenClass } from "./broken-export";
+    3: export const usesBrokenClass = css\`
+    4:   &.\${brokenClass} {
+             ^
+    5:     color: red;
+    6:   }",
+        "hook": "transform",
+        "id": "test/fixtures/broken-export.input.ts",
+        "loc": {
+          "column": 6,
+          "file": "test/fixtures/broken-export.input.ts",
+          "line": 4,
+        },
+        "message": "skipped CSS extraction — could not resolve "brokenClass" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 117,
+      },
+    ]
+  `);
+});
+
+test('type-only imports/exports are ignored (plain rolldown, raw TypeScript)', async () => {
+  // Unlike the Vite pipeline (which strips TypeScript before plugin
+  // transforms run), plain rolldown hands raw TypeScript to the plugin — this
+  // exercises the plugin's own `isType` handling for `import type`,
+  // `import { type x }`, `export type { x } from`, `export { type x } from`,
+  // and `export type * from`.
+  const logs: RolldownLog[] = [];
+  // Plain rolldown does not bundle CSS itself — collect the virtual CSS
+  // modules the plugin emits instead.
+  const cssModules = new Map<string, string>();
+
+  const bundle = await rolldown({
+    input: './test/fixtures/typed.input.ts',
+    plugins: [
+      ecij(),
+      {
+        name: 'collect-css',
+        transform: {
+          filter: { id: /\.css$/ },
+          handler(code, id) {
+            cssModules.set(normalize(id), code);
+            return { code: 'export {};', moduleType: 'js' };
+          },
+        },
+      },
+    ],
+    onLog(level, log, handler) {
+      if (log.plugin === 'ecij') {
+        if (log.id !== undefined) {
+          log.id = normalize(log.id);
+        }
+        if (log.loc?.file !== undefined) {
+          log.loc.file = normalize(log.loc.file);
+        }
+        logs.push(log);
+      } else {
+        handler(level, log);
+      }
+    },
+  });
+
+  try {
+    const { output } = await bundle.generate({ format: 'es' });
+
+    const jsChunk = output.find((chunk) => chunk.type === 'chunk');
+
+    // `typedTone` must come from the `export *` value ('salmon'), not the
+    // type-only decoy re-exports ('WRONG-decoy-value'), and the type-only
+    // star source must not make the name ambiguous.
+    expect(jsChunk?.code.trim()).toMatchInlineSnapshot(`
+      "//#region test/fixtures/typed.input.ts
+      const usesTypedTone = "css-ad8768ea";
+      //#endregion
+      export { usesTypedTone };"
+    `);
+    expect(cssModules).toMatchInlineSnapshot(`
+      Map {
+        "test/fixtures/typed.input.ts.90ad1b45.css" => ".css-ad8768ea {
+        /* uses typed-tone */
+        color: salmon;
+        outline-color: plum;
+        width: 12px;
+        border-color: navy;
+      }",
+      }
+    `);
+    expect(logs).toMatchInlineSnapshot(`[]`);
+  } finally {
+    await bundle.close();
+  }
+});
+
+test('mutually importing css modules resolve through the cycle', async () => {
+  const fixturePath = './test/fixtures/cycle-a.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // cycle-a uses cycle-b's class and vice versa. Loading the in-flight module
+  // is skipped (it would deadlock), but classes extracted so far are visible,
+  // so both sides resolve.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/cycle-a.input.ts
+    var aClass = "css-d4dd33b6";
+    var usesB = "css-9a8fadf3";
+    //#endregion
+    export { aClass, usesB };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-6df9125c {
+      /* cycle-b */
+      &.css-d4dd33b6 {
+        color: green;
+      }
+    }.css-d4dd33b6 {
+      /* cycle-a */
+      color: red;
+    }
+
+    .css-9a8fadf3 {
+      &.css-6df9125c {
+        color: blue;
+      }
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('sibling modules transformed concurrently resolve each other’s classes', async () => {
+  const fixturePath = './test/fixtures/siblings.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // The consumer resolves the producer's class while the producer may still
+  // be mid-transform — the load must be awaited (no cycle), never skipped.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/siblings.input.ts
+    var usesBoth = "css-fe2dd194";
+    //#endregion
+    export { usesBoth };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-1ad5d685 {
+      /* producer */
+      margin: 4px;
+    }.css-e587a2cb {
+      /* consumer */
+      &.css-1ad5d685 {
+        color: blue;
+      }
+    }.css-fe2dd194 {
+      /* uses-both */
+      &.css-1ad5d685 {
+        color: red;
+      }
+
+      &.css-e587a2cb {
+        color: green;
+      }
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('same-file class references: forward references resolve, failed extractions warn', async () => {
+  const fixturePath = './test/fixtures/same-file-classes.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // `usesForward` references a class declared later in the file (resolves via
+  // deferred retry); `usesBrokenSameFile` references a class whose extraction
+  // failed and must warn instead of inlining a phantom class.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/same-file-classes.input.ts
+    function dynamicPad() {
+    	return 4;
+    }
+    var usesForward = "css-8432a53b";
+    var forwardClass = "css-af69c7f2";
+    var usesBrokenSameFile = css\`
+      &.\${css\`
+      padding: \${dynamicPad()}px;
+    \`} {
+        color: red;
+      }
+    \`;
+    //#endregion
+    export { forwardClass, usesBrokenSameFile, usesForward };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-8432a53b {
+      &.css-af69c7f2 {
+        color: red;
+      }
+    }
+
+    .css-af69c7f2 {
+      /* forward */
+      color: green;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "14: \`;
+    15: const brokenSameFile = css\`
+    16:   padding: \${dynamicPad()}px;
+                     ^
+    17: \`;
+    18: export const usesBrokenSameFile = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/same-file-classes.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/same-file-classes.input.ts",
+          "line": 16,
+        },
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "plugin": "ecij",
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 291,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "17: \`;
+    18: export const usesBrokenSameFile = css\`
+    19:   &.\${brokenSameFile} {
+              ^
+    20:     color: red;
+    21:   }",
+        "hook": "transform",
+        "id": "test/fixtures/same-file-classes.input.ts",
+        "loc": {
+          "column": 6,
+          "file": "test/fixtures/same-file-classes.input.ts",
+          "line": 19,
+        },
+        "message": "skipped CSS extraction — could not resolve "brokenSameFile" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 356,
+      },
+    ]
+  `);
+});
+
+test('failed `export *` probes do not drag their stylesheets in', async () => {
+  const fixturePath = './test/fixtures/barrel-deep-only.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // Resolving `dColor` probes barrel-a/barrel-b without finding it — their
+  // CSS (/* a */, /* b */) must not appear in the output.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/barrel-deep-only.input.ts
+    var usesOnlyDeep = "css-ec484d9a";
+    //#endregion
+    export { usesOnlyDeep };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-ec484d9a {
+      /* uses-only-deep */
+      color: darkcyan;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('aliased css tag import (`import { css as styled }`)', async () => {
+  const fixturePath = './test/fixtures/tag-alias.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/tag-alias.input.ts
+    var aliasedTagClass = "css-6536678a";
+    //#endregion
+    export { aliasedTagClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-6536678a {
+      /* aliased-tag */
+      color: olive;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
 test('classPrefix setting', async () => {

@@ -133,6 +133,14 @@ ecij({
 });
 ```
 
+## Limitations
+
+- The `css` tag must be imported directly from `'ecij'` (aliasing it is fine,
+  e.g. `import { css as styled } from 'ecij'`). Re-exporting the tag through
+  another module is not supported and leaves the templates untransformed.
+- Interpolations must statically resolve to strings or numbers; dynamic or
+  complex expressions cause the css`` block to be skipped with a warning.
+
 ## Development
 
 ### Building
@@ -167,5 +175,4 @@ npm test -- -u
 
 ## TODO
 
-- Full import/export handling (default/namespace import/export)
 - Sourcemaps
