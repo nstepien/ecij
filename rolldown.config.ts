@@ -7,6 +7,17 @@ export default defineConfig({
     cleanDir: true,
   },
   platform: 'node',
+  treeshake: {
+    moduleSideEffects: false,
+    propertyReadSideEffects: false,
+    propertyWriteSideEffects: false,
+    unknownGlobalSideEffects: false,
+  },
   external: (id) => !id.startsWith('.'),
-  plugins: [dts()],
+  plugins: [
+    dts({
+      build: true,
+      tsconfig: 'tsconfig.src.json',
+    }),
+  ],
 });
