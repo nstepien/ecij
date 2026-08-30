@@ -449,6 +449,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     context: TransformPluginContext,
     code: string,
     filePath: string,
+    meta: { magicString?: RolldownMagicString },
   ): Promise<{
     // null when the code has no extractions and was left untouched
     magicString: RolldownMagicString | null;
@@ -616,7 +617,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     // Apply replacements through a magic string,
     // so an accurate sourcemap can be generated for the edits
-    const magicString = new RolldownMagicString(code);
+    const magicString = meta.magicString ?? new RolldownMagicString(code);
 
     for (const { start, end, className } of replacements) {
       magicString.overwrite(start, end, `'${className}'`);
@@ -685,7 +686,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           exclude: makeIdFiltersToMatchWithQuery(exclude),
         },
       },
-      async handler(code, id) {
+      async handler(code, id, meta) {
         // Check if the file references 'ecij'
         if (!code.includes('ecij')) {
           return null;
@@ -700,6 +701,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           this,
           code,
           cleanId,
+          meta,
         );
 
         if (magicString === null) {
@@ -735,6 +737,10 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
           // Add side-effect/CSS module imports at the top of the file.
           magicString.prepend(importStatements.join(''));
+        }
+
+        if (meta.magicString) {
+          return { code: meta.magicString };
         }
 
         return {
