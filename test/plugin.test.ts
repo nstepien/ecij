@@ -2367,6 +2367,75 @@ test('hoisted local bindings declared after the template shadow the css tag', as
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
+test('var declarations in blocks resolve interpolations where the template appears', async () => {
+  const fixturePath = './test/fixtures/var-in-block.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/var-in-block.input.ts
+    function varInBlock() {
+    	return "css-b098e96e";
+    }
+    function varInLoop() {
+    	for (const color of ["green", "purple"]) {
+    		var perIteration = css\`
+          color: \${color};
+        \`;
+    		console.log(perIteration);
+    	}
+    }
+    //#endregion
+    export { varInBlock, varInLoop };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-54de619c {
+      color: blue;
+          font-size: 16px;
+    }
+
+    .css-0c2325f9 {
+      padding: 4px;
+    }
+
+    .css-b098e96e {
+      &.css-54de619c,
+        &.css-0c2325f9 {
+          color: red;
+        }
+    }/*$vite$:1*/"
+  `);
+  // The loop variable is unknown at build time, so that template is skipped
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "24:   for (const color of ["green", "purple"]) {
+    25:     var perIteration = css\`
+    26:       color: \${color};
+                       ^
+    27:     \`;
+    28:     console.log(perIteration);",
+        "hook": "transform",
+        "id": "test/fixtures/var-in-block.input.ts",
+        "loc": {
+          "column": 15,
+          "file": "test/fixtures/var-in-block.input.ts",
+          "line": 26,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 489,
+      },
+    ]
+  `);
+});
+
 test('skipped declarations do not register stylesheet dependencies', async () => {
   const fixturePath = './test/fixtures/dependency-skipped.input.ts';
   const result = await buildWithPlugin(fixturePath);

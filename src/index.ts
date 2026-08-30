@@ -48,6 +48,7 @@ interface Declaration {
   className: string;
   node: TaggedTemplateExpression;
   hasInterpolations: boolean;
+  // Scope the template appears in, where its interpolations are resolved
   scope: Scope;
 }
 
@@ -59,11 +60,10 @@ interface CssTagCandidate {
   node: TaggedTemplateExpression;
   // Local name of the tag, a binding of ecij's `css`
   tagName: string;
-  // Scope the template appears in, where the tag is resolved
-  tagScope: Scope;
-  // Scope of the declaration: where `localName` is bound (the function scope
-  // for `var`) and where the template's interpolations are resolved
+  // Scope the template appears in, where the tag and the interpolations are resolved
   scope: Scope;
+  // Scope `localName` is bound in (the function scope for `var` declarations)
+  bindingScope: Scope;
   // Export name when the template is an `export default`
   exportedAs: string | undefined;
 }
@@ -461,7 +461,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     function addCssTagCandidate(
       localName: string | undefined,
       node: TaggedTemplateExpression,
-      scope = currentScope,
+      bindingScope = currentScope,
       exportedAs?: string | undefined,
     ) {
       if (!(node.tag.type === 'Identifier' && cssTagNames.has(node.tag.name))) {
@@ -473,8 +473,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         localName,
         node,
         tagName: node.tag.name,
-        tagScope: currentScope,
-        scope,
+        scope: currentScope,
+        bindingScope,
         exportedAs,
       });
     }
@@ -483,12 +483,12 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       localName,
       node,
       tagName,
-      tagScope,
       scope,
+      bindingScope,
       exportedAs,
     }: CssTagCandidate) {
       // A local binding shadowing the imported tag means this is not the ecij tag
-      if (isBoundInScopeChain(tagName, tagScope)) {
+      if (isBoundInScopeChain(tagName, scope)) {
         return;
       }
 
@@ -511,7 +511,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
       // Record generated class names for css declarations
       if (localName !== undefined) {
-        recordIdentifierWithValue(localName, className, scope, true);
+        recordIdentifierWithValue(localName, className, bindingScope, true);
       } else if (exportedAs !== undefined && scope === rootScope) {
         // `export default css\`...\`` has no local name but is reachable
         // via the `default` export.
