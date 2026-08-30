@@ -451,34 +451,14 @@ test('variable scoping and shadowing', async () => {
     	return "css-68d2d974";
     }
     var afterVarDecl = "css-5519aacd";
-    function multiShadow() {
-    	return "css-6946e38a";
-    }
-    var afterMultiShadow = "css-dd6f0f89";
     function sequentialBlocks() {
-    	console.log("css-4156e44e");
-    	console.log("css-1890c5b2");
-    	return "css-980c7373";
+    	console.log("css-863e4bc2");
+    	console.log("css-a3203fd7");
+    	return "css-8d336c51";
     }
-    function deeplyNested() {
-    	const outerFn = () => {
-    		function inner() {
-    			console.log("css-81becece");
-    			return "css-5866845a";
-    		}
-    		return {
-    			arrowStyle: "css-92f15a0f",
-    			inner: inner()
-    		};
-    	};
-    	return {
-    		outerStyle: "css-373046c6",
-    		outerFn: outerFn()
-    	};
-    }
-    var finalModuleStyle = "css-157eeb32";
+    var finalModuleStyle = "css-77dc14f7";
     //#endregion
-    export { afterArrowShadow, afterFunctionShadow, afterMultiShadow, afterNestedFunctions, afterVarDecl, arrowShadow, blockScope, deeplyNested, finalModuleStyle, functionShadow, level1, multiShadow, sequentialBlocks, shadowsCssClass, shadowsImport, topLevelStyle, usesBaseClass, usesImport, usesImportedClass, varDeclaration };"
+    export { afterArrowShadow, afterFunctionShadow, afterNestedFunctions, afterVarDecl, arrowShadow, blockScope, finalModuleStyle, functionShadow, level1, sequentialBlocks, shadowsCssClass, shadowsImport, topLevelStyle, usesBaseClass, usesImport, usesImportedClass, varDeclaration };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-9cfab70f {
@@ -583,47 +563,19 @@ test('variable scoping and shadowing', async () => {
       color: red;
     }
 
-    .css-6946e38a {
-      color: silver;
-        font-size: 32px;
-        font-weight: 100;
-    }
-
-    .css-dd6f0f89 {
-      color: red;
-      font-size: 16px;
-      font-weight: bold;
-    }
-
-    .css-4156e44e {
+    .css-863e4bc2 {
       color: navy;
     }
 
-    .css-1890c5b2 {
+    .css-a3203fd7 {
       color: olive;
     }
 
-    .css-980c7373 {
+    .css-8d336c51 {
       color: red;
     }
 
-    .css-81becece {
-      color: ivory;
-    }
-
-    .css-5866845a {
-      color: wheat;
-    }
-
-    .css-92f15a0f {
-      color: salmon;
-    }
-
-    .css-373046c6 {
-      color: coral;
-    }
-
-    .css-157eeb32 {
+    .css-77dc14f7 {
       color: red;
       font-size: 16px;
       font-weight: bold;

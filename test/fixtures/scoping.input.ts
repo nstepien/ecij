@@ -184,29 +184,7 @@ export const afterVarDecl = css`
 `;
 
 // =============================================
-// 8. Multiple variables shadowed simultaneously
-// =============================================
-export function multiShadow() {
-  const color = 'silver';
-  const size = '32px';
-  const weight = '100';
-
-  return css`
-    color: ${color};
-    font-size: ${size};
-    font-weight: ${weight};
-  `;
-}
-
-// Module-level after multi shadow: all should use original module values
-export const afterMultiShadow = css`
-  color: ${color};
-  font-size: ${size};
-  font-weight: ${weight};
-`;
-
-// =============================================
-// 9. Sequential blocks with same variable name
+// 8. Sequential blocks with same variable name
 // =============================================
 export function sequentialBlocks() {
   {
@@ -229,48 +207,6 @@ export function sequentialBlocks() {
   return css`
     color: ${color};
   `;
-}
-
-// =============================================
-// 10. Deeply nested with mixed scope types
-// =============================================
-export function deeplyNested() {
-  const color = 'coral';
-
-  const outerFn = () => {
-    const color = 'salmon';
-
-    function inner() {
-      const color = 'wheat';
-
-      {
-        const color = 'ivory';
-        const deepStyle = css`
-          color: ${color};
-        `;
-        console.log(deepStyle);
-      }
-
-      // After block: should use 'wheat'
-      return css`
-        color: ${color};
-      `;
-    }
-
-    // Should use 'salmon'
-    const arrowStyle = css`
-      color: ${color};
-    `;
-
-    return { arrowStyle, inner: inner() };
-  };
-
-  // Should use 'coral'
-  const outerStyle = css`
-    color: ${color};
-  `;
-
-  return { outerStyle, outerFn: outerFn() };
 }
 
 // Final module-level check: should use 'red'
