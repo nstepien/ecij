@@ -1,12 +1,13 @@
+import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
-import type { RolldownLog } from 'rolldown';
+import type { OutputAsset, RolldownLog } from 'rolldown';
 import { build } from 'vite';
-import { expect, test } from 'vitest';
+import { assert, expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replace(/^.*\/test\//, 'test/');
 
 // Helper to run a vite build with the ecij plugin
-async function buildWithPlugin(entry: string, pluginOptions?: Configuration) {
+async function buildWithPlugin(entry: string, pluginOptions?: Configuration, sourcemap = false) {
   const logs: RolldownLog[] = [];
 
   const output = await build({
@@ -17,6 +18,7 @@ async function buildWithPlugin(entry: string, pluginOptions?: Configuration) {
       },
       minify: false,
       write: false,
+      sourcemap,
       rolldownOptions: {
         onLog(level, log, handler) {
           if (log.plugin === 'ecij') {
@@ -44,16 +46,19 @@ async function buildWithPlugin(entry: string, pluginOptions?: Configuration) {
 
   const chunks = output.flatMap((chunk) => chunk.output);
 
-  // Should only have JS and CSS outputs
-  expect(chunks.length).toBeLessThanOrEqual(2);
+  // Should only have JS and CSS outputs, plus the JS sourcemap when enabled
+  expect(chunks.length).toBeLessThanOrEqual(sourcemap ? 3 : 2);
 
   // Extract JS and CSS chunks
   const jsChunk = chunks.find((chunk) => chunk.type === 'chunk');
-  const cssChunk = chunks.find((chunk) => chunk.type === 'asset');
+  const cssChunk = chunks.find(
+    (chunk): chunk is OutputAsset => chunk.type === 'asset' && chunk.fileName.endsWith('.css'),
+  );
 
   return {
     js: jsChunk?.code.trim(),
     css: (cssChunk?.source as string | undefined)?.trim(),
+    map: jsChunk?.map,
     logs,
   };
 }
@@ -139,6 +144,39 @@ test('comprehensive CSS-in-JS patterns', async () => {
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('emit sourcemaps for transformed modules without sourcemap warnings', async () => {
+  const fixturePath = './test/fixtures/comprehensive.input.ts';
+  const { js, map, logs } = await buildWithPlugin(fixturePath, undefined, true);
+
+  // No SOURCEMAP_BROKEN warnings should be emitted for the plugin's transforms
+  expect(logs).toStrictEqual([]);
+
+  assert(map != null, 'Expected the JS chunk to have a sourcemap');
+
+  expect(map.sources).toStrictEqual(['../test/fixtures/comprehensive.input.ts']);
+  expect(map.mappings).not.toBe('');
+
+  // The generated class name string should map back to the position of
+  // the css`` tagged template it replaced in the original source
+  const generatedLines = js!.split('\n');
+  const generatedLine = generatedLines.findIndex((line) => line.includes('"css-39ccb25d"'));
+  expect(generatedLine).not.toBe(-1);
+
+  const originalPosition = originalPositionFor(new TraceMap(map as EncodedSourceMap), {
+    line: generatedLine + 1,
+    column: generatedLines[generatedLine]!.indexOf('"css-39ccb25d"'),
+  });
+
+  // `buttonClass` is declared on line 7 of the fixture,
+  // with its css`` tag starting at column 27
+  expect(originalPosition).toStrictEqual({
+    source: '../test/fixtures/comprehensive.input.ts',
+    line: 7,
+    column: 27,
+    name: null,
+  });
 });
 
 test('generate hash based on file path relative to root and file name to avoid name conflicts', async () => {
