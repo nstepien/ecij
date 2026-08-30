@@ -2292,6 +2292,136 @@ test('aliased css tag import (`import { css as styled }`)', async () => {
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
+test('hoisted local bindings declared after the template shadow the css tag', async () => {
+  const fixturePath = './test/fixtures/tag-shadow-hoisting.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // Only the two templates whose tag is not shadowed are extracted; the others
+  // keep calling the local binding they refer to at runtime
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/tag-shadow-hoisting.input.ts
+    function laterConst() {
+    	const shadowed = styled\`
+        color: red;
+      \`;
+    	const styled = String.raw;
+    	return [shadowed, styled];
+    }
+    function laterVar() {
+    	const shadowed = styled\`
+        color: green;
+      \`;
+    	var styled = String.raw;
+    	return [shadowed, styled];
+    }
+    function laterFunction() {
+    	const shadowed = styled\`
+        color: blue;
+      \`;
+    	function styled(strings) {
+    		return strings.raw.join("");
+    	}
+    	return shadowed;
+    }
+    function laterClass() {
+    	const shadowed = styled\`
+        color: purple;
+      \`;
+    	class styled {}
+    	return [shadowed, styled];
+    }
+    function selfReference() {
+    	const styled = styled\`
+        color: orange;
+      \`;
+    	return styled;
+    }
+    function enclosingScope() {
+    	const inner = () => styled\`
+        color: pink;
+      \`;
+    	const styled = String.raw;
+    	return [inner(), styled];
+    }
+    function nestedBlock() {
+    	const extracted = "css-3fbc0559";
+    	{
+    		const styled = String.raw;
+    		console.log(styled\`nested\`);
+    	}
+    	return extracted;
+    }
+    var moduleLevel = "css-cc02a132";
+    //#endregion
+    export { enclosingScope, laterClass, laterConst, laterFunction, laterVar, moduleLevel, nestedBlock, selfReference };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-3fbc0559 {
+      color: teal;
+    }
+
+    .css-cc02a132 {
+      color: gold;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('skipped declarations do not register stylesheet dependencies', async () => {
+  const fixturePath = './test/fixtures/dependency-skipped.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/dependency-skipped.input.ts
+    var skipped = css\`
+      &.\${"css-3e6bfd87"} {
+        width: \${Math.random()}px;
+      }
+    \`;
+    var extracted = "css-93a3b18c";
+    //#endregion
+    export { extracted, skipped };"
+  `);
+  // The helper's stylesheet is only reached through the untouched import, so it
+  // follows this module's own CSS instead of being hoisted above it as a dependency
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-93a3b18c {
+      color: red;
+    }.css-3e6bfd87 {
+      display: flex;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "3: export const skipped = css\`
+    4:   &.\${importedClass} {
+    5:     width: \${Math.random()}px;
+                    ^
+    6:   }
+    7: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/dependency-skipped.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/dependency-skipped.input.ts",
+          "line": 5,
+        },
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "plugin": "ecij",
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 142,
+      },
+    ]
+  `);
+});
+
 test('classPrefix setting', async () => {
   const fixturePath = './test/fixtures/basic.input.ts';
   const result = await buildWithPlugin(fixturePath, {

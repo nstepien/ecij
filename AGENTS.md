@@ -61,6 +61,7 @@ The plugin implements three Rolldown lifecycle hooks:
 ## Testing
 
 Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`.
+Fixtures stand in for user code and are exempt from the naming conventions above: their exported constants stay camelCase, as in real application code.
 
 The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`.
 

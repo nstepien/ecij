@@ -51,6 +51,23 @@ interface Declaration {
   scope: Scope;
 }
 
+// A css`` template found while visiting a file. Whether its tag is shadowed is
+// only decided once the visit completes and every scope is fully populated.
+interface CssTagCandidate {
+  // Variable the template is assigned to, if any
+  localName: string | undefined;
+  node: TaggedTemplateExpression;
+  // Local name of the tag, a binding of ecij's `css`
+  tagName: string;
+  // Scope the template appears in, where the tag is resolved
+  tagScope: Scope;
+  // Scope of the declaration: where `localName` is bound (the function scope
+  // for `var`) and where the template's interpolations are resolved
+  scope: Scope;
+  // Export name when the template is an `export default`
+  exportedAs: string | undefined;
+}
+
 type ImportedIdentifier =
   // `import { x } from 'mod'` (`imported` is `'default'` for default imports)
   | { kind: 'named'; source: string; imported: string }
@@ -163,6 +180,14 @@ function flattenMemberExpressionPath(expression: Expression): string[] | undefin
 
   names.unshift(current.name);
   return names;
+}
+
+// True if `name` is bound anywhere along the scope chain (i.e. shadows imports).
+function isBoundInScopeChain(name: string, scope: Scope): boolean {
+  for (let current: Scope | null = scope; current !== null; current = current.parent) {
+    if (current.identifiers.has(name)) return true;
+  }
+  return false;
 }
 
 export function ecij(configuration?: Configuration | undefined | null): Plugin {
@@ -423,28 +448,47 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       }
     }
 
-    function isCssTagTemplate(node: TaggedTemplateExpression, scope: Scope): boolean {
-      if (!(node.tag.type === 'Identifier' && cssTagNames.has(node.tag.name))) {
-        return false;
-      }
+    // css`` templates in source order, extracted once the visit completes.
+    // Whether the tag is shadowed can only be decided when every scope is fully
+    // populated: `let`/`const`/`class` declarations are hoisted to the top of
+    // their block (TDZ) and `var`/function declarations to their function scope,
+    // so a binding declared *after* the template still shadows the import at
+    // the template's position.
+    const cssTagCandidates: CssTagCandidate[] = [];
 
-      // A local binding shadowing the imported tag means this is not the ecij tag
-      for (let current: Scope | null = scope; current !== null; current = current.parent) {
-        if (current.identifiers.has(node.tag.name)) {
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    function handleTaggedTemplateExpression(
+    // Records `node` as a css`` candidate if its tag is a local binding of
+    // ecij's `css`; any other tagged template is left alone.
+    function addCssTagCandidate(
       localName: string | undefined,
       node: TaggedTemplateExpression,
       scope = currentScope,
       exportedAs?: string | undefined,
     ) {
-      if (!isCssTagTemplate(node, scope)) {
+      if (!(node.tag.type === 'Identifier' && cssTagNames.has(node.tag.name))) {
+        return;
+      }
+
+      processedTaggedTemplateExpressions.add(node);
+      cssTagCandidates.push({
+        localName,
+        node,
+        tagName: node.tag.name,
+        tagScope: currentScope,
+        scope,
+        exportedAs,
+      });
+    }
+
+    function extractCssTagCandidate({
+      localName,
+      node,
+      tagName,
+      tagScope,
+      scope,
+      exportedAs,
+    }: CssTagCandidate) {
+      // A local binding shadowing the imported tag means this is not the ecij tag
+      if (isBoundInScopeChain(tagName, tagScope)) {
         return;
       }
 
@@ -684,16 +728,16 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         const init = node.init == null ? undefined : unwrapExpression(node.init);
 
         if (init !== undefined) {
-          if (init.type === 'TaggedTemplateExpression' && isCssTagTemplate(init, currentScope)) {
-            processedTaggedTemplateExpressions.add(init);
-            handleTaggedTemplateExpression(localName, init, targetScope);
-            return;
-          }
-
-          const value = resolveStaticExpression(init);
-          if (value !== undefined) {
-            recordIdentifierWithValue(localName, value, targetScope);
-            return;
+          if (init.type === 'TaggedTemplateExpression') {
+            // Bound as unknown below; a css`` candidate that gets extracted
+            // replaces it with the generated class name.
+            addCssTagCandidate(localName, init, targetScope);
+          } else {
+            const value = resolveStaticExpression(init);
+            if (value !== undefined) {
+              recordIdentifierWithValue(localName, value, targetScope);
+              return;
+            }
           }
         }
 
@@ -704,7 +748,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       TaggedTemplateExpression(node) {
         if (!processedTaggedTemplateExpressions.has(node)) {
           // No variable name for inline expressions
-          handleTaggedTemplateExpression(undefined, node);
+          addCssTagCandidate(undefined, node);
         }
       },
 
@@ -722,12 +766,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
             : unwrapExpression(node.declaration);
         if (declaration === undefined) return;
 
-        if (
-          declaration.type === 'TaggedTemplateExpression' &&
-          isCssTagTemplate(declaration, currentScope)
-        ) {
-          processedTaggedTemplateExpressions.add(declaration);
-          handleTaggedTemplateExpression(undefined, declaration, currentScope, 'default');
+        if (declaration.type === 'TaggedTemplateExpression') {
+          addCssTagCandidate(undefined, declaration, currentScope, 'default');
           return;
         }
 
@@ -744,6 +784,11 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     });
 
     visitor.visit(parseResult.program);
+
+    // Every scope is populated now, so tag shadowing can be decided
+    for (const candidate of cssTagCandidates) {
+      extractCssTagCandidate(candidate);
+    }
 
     // Explicit exports that never received a static value must still shadow
     // `export *` sources (per ESM, explicit exports win over star re-exports),
@@ -942,11 +987,12 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       return undefined;
     }
 
-    function addStylesheetDependencies(files: readonly string[]) {
+    // Record the stylesheets of `files` into `dependencies`
+    function addStylesheetDependencies(files: readonly string[], dependencies: Set<string>) {
       for (const file of files) {
         const stylesheet = stylesheetImportPerFile.get(file);
         if (stylesheet !== undefined) {
-          stylesheetDependencies.add(stylesheet);
+          dependencies.add(stylesheet);
         }
       }
     }
@@ -957,26 +1003,21 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     async function resolveExportValue(
       targetFilePath: string,
       exportName: string,
+      dependencies: Set<string>,
     ): Promise<string | undefined> {
       const target = await resolveExportTarget(targetFilePath, exportName, new Set());
       if (target === undefined || target.kind !== 'value') return undefined;
 
-      addStylesheetDependencies(target.files);
+      addStylesheetDependencies(target.files, dependencies);
       return target.value;
     }
 
-    // True if `name` is bound anywhere along the scope chain (i.e. shadows imports).
-    function isBoundInScopeChain(name: string, scope: Scope): boolean {
-      let current: Scope | null = scope;
-      while (current !== null) {
-        if (current.identifiers.has(name)) return true;
-        current = current.parent;
-      }
-      return false;
-    }
-
     // Helper to resolve a value from an identifier, walking up the scope chain
-    async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
+    async function resolveValue(
+      identifierName: string,
+      scope: Scope,
+      dependencies: Set<string>,
+    ): Promise<string | undefined> {
       if (scope.identifiers.has(identifierName)) {
         // May return undefined for declarations with unknown values (e.g. function params),
         // which stops the lookup and signals "can't resolve"
@@ -986,7 +1027,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       // Walk up the scope chain to find the identifier
       const { parent } = scope;
       if (parent !== null) {
-        return resolveValue(identifierName, parent);
+        return resolveValue(identifierName, parent, dependencies);
       }
 
       // Check if it's an imported identifier
@@ -1000,7 +1041,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       const importedFilePath = await resolveImportedFile(importEntry.source, filePath);
       if (importedFilePath === undefined) return undefined;
 
-      return resolveExportValue(importedFilePath, importEntry.imported);
+      return resolveExportValue(importedFilePath, importEntry.imported, dependencies);
     }
 
     // Resolve `${ns.foo}` / `${ns.inner.foo}` member paths where the base
@@ -1010,6 +1051,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     async function resolveMemberPath(
       names: readonly string[],
       scope: Scope,
+      dependencies: Set<string>,
     ): Promise<string | undefined> {
       const namespaceName = names[0]!;
 
@@ -1051,7 +1093,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       );
       if (target === undefined || target.kind !== 'value') return undefined;
 
-      addStylesheetDependencies([...traversedFiles, ...target.files]);
+      addStylesheetDependencies([...traversedFiles, ...target.files], dependencies);
       return target.value;
     }
 
@@ -1104,6 +1146,11 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     ): Promise<'extracted' | 'deferred' | 'skipped'> {
       const { quasis, expressions } = declaration.node.quasi;
 
+      // Stylesheets of the modules the interpolations resolve through. They are
+      // only committed once the declaration is extracted: a skipped declaration
+      // is left untouched, so it must not pull in the stylesheets of modules it
+      // merely probed.
+      const dependencies = new Set<string>();
       let cssContent = '';
 
       for (let i = 0; i < quasis.length; i++) {
@@ -1121,7 +1168,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
                 : undefined;
 
             if (expression.type === 'Identifier') {
-              resolvedValue = await resolveValue(expression.name, declaration.scope);
+              resolvedValue = await resolveValue(expression.name, declaration.scope, dependencies);
 
               // A class name of a same-file declaration that has not been
               // extracted: defer in case it is a forward reference whose
@@ -1149,7 +1196,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
               }
             } else if (memberPath !== undefined) {
               // Namespace member access: `${ns.foo}` / `${ns.inner.foo}`
-              resolvedValue = await resolveMemberPath(memberPath, declaration.scope);
+              resolvedValue = await resolveMemberPath(memberPath, declaration.scope, dependencies);
 
               if (resolvedValue === undefined) {
                 context.warn(
@@ -1180,6 +1227,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       }
 
       addProcessedDeclaration(declaration, cssContent);
+      for (const dependency of dependencies) {
+        stylesheetDependencies.add(dependency);
+      }
       return 'extracted';
     }
 
