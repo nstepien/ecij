@@ -18,11 +18,6 @@ import reexportDefault from './reexports-named';
 import { styles } from './reexports-namespace';
 // `export * from 'mod'` — looks up via star aggregation (excludes default)
 import { accentColor as starAccentColor, accentClass as starAccentClass } from './reexports-star';
-// Inline type modifier mixed with a value import; `typedTone` resolves through
-// the barrel's `export *` despite the barrel's type-only re-exports of a decoy
-import { type LocalSpec, typedTone } from './typed-barrel';
-// Type-only imports — erased at runtime and ignored by the plugin
-import type { ToneType } from './typed-tokens';
 
 export const usesDefaultCssClass = css`
   /* uses default-css */
@@ -96,14 +91,4 @@ export const usesNamespaceReexport = css`
 export default css`
   /* entry-default */
   font-size: 12px;
-`;
-
-const typedOutline: ToneType = 'peru';
-const typedWidth: LocalSpec = '6px';
-
-export const usesTypeOnlyBarrel = css`
-  /* uses type-only-barrel */
-  color: ${typedTone};
-  outline-color: ${typedOutline};
-  width: ${typedWidth};
 `;

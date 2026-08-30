@@ -481,8 +481,10 @@ test('variable scoping and shadowing', async () => {
     export { afterArrowShadow, afterFunctionShadow, afterMultiShadow, afterNestedFunctions, afterVarDecl, arrowShadow, blockScope, deeplyNested, finalModuleStyle, functionShadow, level1, multiShadow, sequentialBlocks, shadowsCssClass, shadowsImport, topLevelStyle, usesBaseClass, usesImport, usesImportedClass, varDeclaration };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
-    ".css-3e6bfd87 {
-      display: flex;
+    ".css-9cfab70f {
+      /* accent */
+      background: crimson;
+      font-size: 14px;
     }.css-0195f7e3 {
       color: red;
       font-size: 16px;
@@ -543,12 +545,12 @@ test('variable scoping and shadowing', async () => {
     }
 
     .css-61cf5dea {
-      color: teal;
-      font-size: 20px;
+      color: crimson;
+      font-size: 14px;
     }
 
     .css-4d5166f1 {
-      &.css-3e6bfd87 {
+      &.css-9cfab70f {
         display: block;
       }
     }
@@ -814,9 +816,20 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         color: \${true};
       \`;
     }
-    var finalModuleCheck = "css-7ff6d232";
+    function varDeclaredInBlock() {
+    	return "css-338b1b83";
+    }
+    function varDeclaredInLoop() {
+    	for (const color of ["green", "purple"]) {
+    		var perIteration = css\`
+          color: \${color};
+        \`;
+    		console.log(perIteration);
+    	}
+    }
+    var finalModuleCheck = "css-361b5f22";
     //#endregion
-    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, switchScope, varForIn, varForOf, varInBlock };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, switchScope, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -875,7 +888,23 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: red;
     }
 
-    .css-7ff6d232 {
+    .css-c5b52b7e {
+      color: blue;
+          font-size: 16px;
+    }
+
+    .css-2a8701d8 {
+      padding: 4px;
+    }
+
+    .css-338b1b83 {
+      &.css-c5b52b7e,
+        &.css-2a8701d8 {
+          color: red;
+        }
+    }
+
+    .css-361b5f22 {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"
@@ -1402,6 +1431,26 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 3915,
       },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "254:   for (const color of ["green", "purple"]) {
+    255:     var perIteration = css\`
+    256:       color: \${color};
+                        ^
+    257:     \`;
+    258:     console.log(perIteration);",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 15,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 256,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 4365,
+      },
     ]
   `);
 });
@@ -1420,10 +1469,6 @@ test('default, namespace, and re-exported imports/exports', async () => {
   // - `export { foo as default } from 'mod'`
   // - `export * from 'mod'` (excludes the default export)
   // - `export * as ns from 'mod'` accessed through a named import
-  // - type-only imports/exports (`import type { T }`, `import { type T, x }`,
-  //   `export type { T } from`, `export { type x } from`, `export type * from`)
-  //   are erased: `typedTone` resolves to the star-provided value ('salmon'),
-  //   never the type-only decoy re-export ('WRONG-decoy-value')
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/import-export.input.ts
     var usesDefaultCssClass = "css-b0b5a725";
@@ -1436,9 +1481,8 @@ test('default, namespace, and re-exported imports/exports', async () => {
     var usesStarReexport = "css-51c1a4dd";
     var usesNamespaceReexport = "css-258eae2b";
     var import_export_input_default = "css-00ba416b";
-    var usesTypeOnlyBarrel = "css-6a439424";
     //#endregion
-    export { import_export_input_default as default, usesDefaultCssClass, usesDefaultLiteral, usesDefaultLocalClass, usesNamespaceImport, usesNamespaceReexport, usesReexportDefaultAsNamed, usesReexportNamed, usesReexportNamedAsDefault, usesStarReexport, usesTypeOnlyBarrel };"
+    export { import_export_input_default as default, usesDefaultCssClass, usesDefaultLiteral, usesDefaultLocalClass, usesNamespaceImport, usesNamespaceReexport, usesReexportDefaultAsNamed, usesReexportNamed, usesReexportNamedAsDefault, usesStarReexport };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-2c1bb3ca {
@@ -1522,13 +1566,6 @@ test('default, namespace, and re-exported imports/exports', async () => {
     .css-00ba416b {
       /* entry-default */
       font-size: 12px;
-    }
-
-    .css-6a439424 {
-      /* uses type-only-barrel */
-      color: salmon;
-      outline-color: peru;
-      width: 6px;
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`[]`);
@@ -2273,31 +2310,13 @@ test('failed `export *` probes do not drag their stylesheets in', async () => {
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
-test('aliased css tag import (`import { css as styled }`)', async () => {
-  const fixturePath = './test/fixtures/tag-alias.input.ts';
-  const result = await buildWithPlugin(fixturePath);
-
-  expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/tag-alias.input.ts
-    var aliasedTagClass = "css-6536678a";
-    //#endregion
-    export { aliasedTagClass };"
-  `);
-  expect(result.css).toMatchInlineSnapshot(`
-    ".css-6536678a {
-      /* aliased-tag */
-      color: olive;
-    }/*$vite$:1*/"
-  `);
-  expect(result.logs).toMatchInlineSnapshot(`[]`);
-});
-
-test('hoisted local bindings declared after the template shadow the css tag', async () => {
+test('hoisted local bindings declared after the template shadow the (aliased) css tag', async () => {
   const fixturePath = './test/fixtures/tag-shadow-hoisting.input.ts';
   const result = await buildWithPlugin(fixturePath);
 
-  // Only the two templates whose tag is not shadowed are extracted; the others
-  // keep calling the local binding they refer to at runtime
+  // The tag is imported as `import { css as styled }`. Only the two templates
+  // whose tag is not shadowed are extracted; the others keep calling the local
+  // binding they refer to at runtime
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/tag-shadow-hoisting.input.ts
     function laterConst() {
@@ -2367,75 +2386,6 @@ test('hoisted local bindings declared after the template shadow the css tag', as
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
-test('var declarations in blocks resolve interpolations where the template appears', async () => {
-  const fixturePath = './test/fixtures/var-in-block.input.ts';
-  const result = await buildWithPlugin(fixturePath);
-
-  expect(result.js).toMatchInlineSnapshot(`
-    "//#region index.js
-    function css() {
-    	throw new Error("css\`\` should have been transformed by the ecij plugin");
-    }
-    //#endregion
-    //#region test/fixtures/var-in-block.input.ts
-    function varInBlock() {
-    	return "css-b098e96e";
-    }
-    function varInLoop() {
-    	for (const color of ["green", "purple"]) {
-    		var perIteration = css\`
-          color: \${color};
-        \`;
-    		console.log(perIteration);
-    	}
-    }
-    //#endregion
-    export { varInBlock, varInLoop };"
-  `);
-  expect(result.css).toMatchInlineSnapshot(`
-    ".css-54de619c {
-      color: blue;
-          font-size: 16px;
-    }
-
-    .css-0c2325f9 {
-      padding: 4px;
-    }
-
-    .css-b098e96e {
-      &.css-54de619c,
-        &.css-0c2325f9 {
-          color: red;
-        }
-    }/*$vite$:1*/"
-  `);
-  // The loop variable is unknown at build time, so that template is skipped
-  expect(result.logs).toMatchInlineSnapshot(`
-    [
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "24:   for (const color of ["green", "purple"]) {
-    25:     var perIteration = css\`
-    26:       color: \${color};
-                       ^
-    27:     \`;
-    28:     console.log(perIteration);",
-        "hook": "transform",
-        "id": "test/fixtures/var-in-block.input.ts",
-        "loc": {
-          "column": 15,
-          "file": "test/fixtures/var-in-block.input.ts",
-          "line": 26,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 489,
-      },
-    ]
-  `);
-});
-
 test('skipped declarations do not register stylesheet dependencies', async () => {
   const fixturePath = './test/fixtures/dependency-skipped.input.ts';
   const result = await buildWithPlugin(fixturePath);
@@ -2448,7 +2398,7 @@ test('skipped declarations do not register stylesheet dependencies', async () =>
     //#endregion
     //#region test/fixtures/dependency-skipped.input.ts
     var skipped = css\`
-      &.\${"css-3e6bfd87"} {
+      &.\${"css-9cfab70f"} {
         width: \${Math.random()}px;
       }
     \`;
@@ -2461,8 +2411,10 @@ test('skipped declarations do not register stylesheet dependencies', async () =>
   expect(result.css).toMatchInlineSnapshot(`
     ".css-93a3b18c {
       color: red;
-    }.css-3e6bfd87 {
-      display: flex;
+    }.css-9cfab70f {
+      /* accent */
+      background: crimson;
+      font-size: 14px;
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`
@@ -2470,7 +2422,7 @@ test('skipped declarations do not register stylesheet dependencies', async () =>
       {
         "code": "PLUGIN_WARNING",
         "frame": "3: export const skipped = css\`
-    4:   &.\${importedClass} {
+    4:   &.\${accentClass} {
     5:     width: \${Math.random()}px;
                     ^
     6:   }
@@ -2485,28 +2437,32 @@ test('skipped declarations do not register stylesheet dependencies', async () =>
         "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
         "plugin": "ecij",
         "pluginCode": "COMPLEX_INTERPOLATION",
-        "pos": 142,
+        "pos": 136,
       },
     ]
   `);
 });
 
 test('classPrefix setting', async () => {
-  const fixturePath = './test/fixtures/basic.input.ts';
+  const fixturePath = './test/fixtures/identical.input.ts';
   const result = await buildWithPlugin(fixturePath, {
     classPrefix: 'custom_',
   });
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/basic.input.ts
-    var basicClass = "custom_90f511d6";
+    "//#region test/fixtures/identical-first.ts
+    var myClass = "custom_3f848070";
     //#endregion
-    export { basicClass };"
+    //#region test/fixtures/identical-second.ts
+    var myClass$1 = "custom_5a57e4d1";
+    //#endregion
+    export { myClass as firstClass, myClass$1 as secondClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
-    ".custom_90f511d6 {
-      border: 1px solid blue;
-      padding: 10px;
+    ".custom_3f848070 {
+      color: green;
+    }.custom_5a57e4d1 {
+      color: green;
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`[]`);

@@ -1,6 +1,6 @@
 import { css } from 'ecij';
 
-import { importedColor, importedSize, importedClass } from './scoping-helper';
+import { accentColor, accentSize, accentClass } from './named-styles';
 
 // =============================================
 // Module-level declarations
@@ -122,22 +122,22 @@ export function blockScope() {
 // 5. Import shadowing
 // =============================================
 export function shadowsImport() {
-  const importedColor = 'black';
-  // Should use local 'black', not imported 'teal'
+  const accentColor = 'black';
+  // Should use local 'black', not imported 'crimson'
   return css`
-    color: ${importedColor};
+    color: ${accentColor};
   `;
 }
 
-// Module-level using import: should use imported 'teal'
+// Module-level using import: should use imported 'crimson'
 export const usesImport = css`
-  color: ${importedColor};
-  font-size: ${importedSize};
+  color: ${accentColor};
+  font-size: ${accentSize}px;
 `;
 
 // Module-level using imported class
 export const usesImportedClass = css`
-  &.${importedClass} {
+  &.${accentClass} {
     display: block;
   }
 `;

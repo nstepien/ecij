@@ -1,13 +1,13 @@
 import { css } from 'ecij';
 
-import { importedClass } from './scoping-helper';
+import { accentClass } from './named-styles';
 
-// `importedClass` resolves through './scoping-helper', but the second
+// `accentClass` resolves through './named-styles', but the second
 // interpolation cannot be resolved statically. The declaration is skipped and
 // left untouched, so the helper's stylesheet must not be registered as a
 // dependency of this module on its account.
 export const skipped = css`
-  &.${importedClass} {
+  &.${accentClass} {
     width: ${Math.random()}px;
   }
 `;

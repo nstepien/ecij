@@ -400,7 +400,48 @@ export function booleanLiteralShadow() {
 }
 
 // =============================================
-// 32. Module-level check: everything should still resolve
+// 32. var-declared template in a block resolves the block's bindings
+// =============================================
+// The `var` binding hoists to the function scope, but the template's
+// interpolations are evaluated where the template appears.
+export function varDeclaredInBlock() {
+  {
+    const color = 'blue';
+    const padding = '4px';
+    // `color` is the block's 'blue', not the module's 'red'
+    var shadowed = css`
+      color: ${color};
+      font-size: ${size};
+    `;
+    // `padding` only exists inside the block
+    var padded = css`
+      padding: ${padding};
+    `;
+  }
+  // The bindings are usable out here, and `color` is the module's 'red' again
+  return css`
+    &.${shadowed},
+    &.${padded} {
+      color: ${color};
+    }
+  `;
+}
+
+// =============================================
+// 33. var-declared template in a loop body sees the loop variable
+// =============================================
+export function varDeclaredInLoop() {
+  for (const color of ['green', 'purple']) {
+    // The loop variable has no static value → NOT extracted
+    var perIteration = css`
+      color: ${color};
+    `;
+    console.log(perIteration);
+  }
+}
+
+// =============================================
+// 34. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
