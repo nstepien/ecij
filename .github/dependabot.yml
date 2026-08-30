@@ -1,19 +1,24 @@
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
 
 version: 2
 updates:
   - package-ecosystem: 'npm'
     directory: '/'
-    versioning-strategy: increase
     schedule:
       interval: 'weekly'
     groups:
-      vitest:
+      dependencies:
         patterns:
-          - 'vitest'
-          - '@vitest/*'
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
 
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
       interval: 'weekly'
+    groups:
+      actions:
+        patterns:
+          - '*'

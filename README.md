@@ -172,7 +172,3 @@ npm test
 # Update inline snapshots after intentional changes
 npm test -- -u
 ```
-
-## TODO
-
-- Sourcemaps
