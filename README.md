@@ -168,4 +168,3 @@ npm test -- -u
 ## TODO
 
 - Full import/export handling (default/namespace import/export)
-- Sourcemaps

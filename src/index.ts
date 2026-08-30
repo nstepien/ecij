@@ -8,7 +8,7 @@ import type {
   ParamPattern,
   TaggedTemplateExpression,
 } from '@oxc-project/types';
-import type { Plugin, TransformPluginContext } from 'rolldown';
+import { RolldownMagicString, type Plugin, type TransformPluginContext } from 'rolldown';
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
 import { parseSync, Visitor } from 'rolldown/utils';
 
@@ -450,8 +450,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     code: string,
     filePath: string,
   ): Promise<{
-    transformedCode: string;
-    hasExtractions: boolean;
+    // null when the code has no extractions and was left untouched
+    magicString: RolldownMagicString | null;
     cssContent: string;
     stylesheetDependencies: Set<string>;
   }> {
@@ -608,22 +608,18 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     if (replacements.length === 0) {
       return {
-        transformedCode: code,
-        hasExtractions: false,
+        magicString: null,
         cssContent: '',
         stylesheetDependencies,
       };
     }
 
-    // Sort replacements by start position in descending order
-    // This ensures we apply replacements from end to start, preserving positions
-    replacements.sort((a, b) => b.start - a.start);
-
-    // Apply replacements from highest position to lowest to maintain correct indices
-    let transformedCode = code;
+    // Apply replacements through a magic string,
+    // so an accurate sourcemap can be generated for the edits
+    const magicString = new RolldownMagicString(code);
 
     for (const { start, end, className } of replacements) {
-      transformedCode = `${transformedCode.slice(0, start)}'${className}'${transformedCode.slice(end)}`;
+      magicString.overwrite(start, end, `'${className}'`);
     }
 
     // Sort CSS extractions by source position to maintain original order
@@ -641,8 +637,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     const cssContent = cssBlocks.join('\n\n');
 
     return {
-      transformedCode,
-      hasExtractions: true,
+      magicString,
       cssContent,
       stylesheetDependencies,
     };
@@ -701,47 +696,51 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
 
         // Extract CSS from the code
-        const { transformedCode, hasExtractions, cssContent, stylesheetDependencies } =
-          await extractCssFromCode(this, code, cleanId);
+        const { magicString, cssContent, stylesheetDependencies } = await extractCssFromCode(
+          this,
+          code,
+          cleanId,
+        );
 
-        if (!hasExtractions) {
+        if (magicString === null) {
           return null;
         }
 
         // Avoid outputing empty CSS modules
-        if (cssContent === '') {
-          return transformedCode;
+        if (cssContent !== '') {
+          // Generate CSS module ID for this file
+          // A hash of the CSS content is created to make HMR work
+          // Use the original file path with .css extension
+          // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
+          const hash = hashText(cssContent);
+          const cssModuleId = `${cleanId}.${hash}.css`;
+
+          // Store the CSS extractions for this file
+          extractedCssPerFile.set(cssModuleId, cssContent);
+          stylesheetImportPerFile.set(id, cssModuleId);
+
+          const importStatements: string[] = [];
+
+          // Include side-effect imports for modules from which class names were imported.
+          // Otherwise, the original imports may be treated as being free of side-effects,
+          // leading those imports to be omitted from the final bundle,
+          // along with their extracted CSS.
+          for (const id of stylesheetDependencies) {
+            importStatements.push(`import ${JSON.stringify(id)};\n`);
+          }
+
+          // use JSON.stringify to properly escape the module ID,
+          // including \ delimiters on Windows.
+          importStatements.push(`import ${JSON.stringify(cssModuleId)};\n`);
+
+          // Add side-effect/CSS module imports at the top of the file.
+          magicString.prepend(importStatements.join(''));
         }
 
-        // Generate CSS module ID for this file
-        // A hash of the CSS content is created to make HMR work
-        // Use the original file path with .css extension
-        // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
-        const hash = hashText(cssContent);
-        const cssModuleId = `${cleanId}.${hash}.css`;
-
-        // Store the CSS extractions for this file
-        extractedCssPerFile.set(cssModuleId, cssContent);
-        stylesheetImportPerFile.set(id, cssModuleId);
-
-        const importStatements: string[] = [];
-
-        // Include side-effect imports for modules from which class names were imported.
-        // Otherwise, the original imports may be treated as being free of side-effects,
-        // leading those imports to be omitted from the final bundle,
-        // along with their extracted CSS.
-        for (const id of stylesheetDependencies) {
-          importStatements.push(`import ${JSON.stringify(id)};\n`);
-        }
-
-        // use JSON.stringify to properly escape the module ID,
-        // including \ delimiters on Windows.
-        importStatements.push(`import ${JSON.stringify(cssModuleId)};\n`);
-
-        const importStatement = importStatements.join('');
-
-        // Add side-effect/CSS module imports at the top of the file.
-        return `${importStatement}${transformedCode}`;
+        return {
+          code: magicString.toString(),
+          map: magicString.generateMap({ hires: 'boundary' }).toString(),
+        };
       },
     },
   };

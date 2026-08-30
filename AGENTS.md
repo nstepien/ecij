@@ -46,7 +46,7 @@ CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compati
 
 The plugin implements three Rolldown lifecycle hooks:
 
-1. **`transform`** — Parses source files with `parseSync` (oxc-parser), identifies `css` tagged template literals imported from `ecij`, extracts their CSS content, replaces them with generated class name strings, and injects a side-effect import for the virtual CSS module.
+1. **`transform`** — Parses source files with `parseSync` (oxc-parser), identifies `css` tagged template literals imported from `ecij`, extracts their CSS content, replaces them with generated class name strings, and injects a side-effect import for the virtual CSS module. Edits are applied through `RolldownMagicString` so the hook returns a sourcemap alongside the transformed code.
 2. **`resolveId`** — Resolves virtual CSS module IDs (e.g., `Button.tsx.<hash>.css`). Also re-resolves source files that have CSS extractions to prevent them from being tree-shaken when all their exports are statically evaluated away.
 3. **`load`** — Returns the extracted CSS content for virtual CSS module IDs.
 
