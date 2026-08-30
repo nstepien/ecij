@@ -753,10 +753,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     }
     function switchScope(value) {
     	switch (value) {
-    		case "a":
-    			console.log("css-9c07daeb");
-    			break;
-    		default: break;
+    		case "a": console.log("css-9c07daeb");
     	}
     	return "css-98764909";
     }
