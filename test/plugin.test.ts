@@ -2,7 +2,7 @@ import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewel
 import { ecij, type Configuration } from 'ecij/plugin';
 import type { OutputAsset, RolldownLog } from 'rolldown';
 import { build } from 'vite';
-import { expect, test } from 'vitest';
+import { assert, expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replace(/^.*\/test\//, 'test/');
 
@@ -151,13 +151,11 @@ test('emit sourcemaps for transformed modules without sourcemap warnings', async
   const { js, map, logs } = await buildWithPlugin(fixturePath, undefined, true);
 
   // No SOURCEMAP_BROKEN warnings should be emitted for the plugin's transforms
-  expect(logs).toMatchInlineSnapshot(`[]`);
+  expect(logs).toStrictEqual([]);
 
-  if (map == null) {
-    throw new Error('Expected the JS chunk to have a sourcemap');
-  }
+  assert(map != null, 'Expected the JS chunk to have a sourcemap');
 
-  expect(map.sources).toEqual(['../test/fixtures/comprehensive.input.ts']);
+  expect(map.sources).toStrictEqual(['../test/fixtures/comprehensive.input.ts']);
   expect(map.mappings).not.toBe('');
 
   // The generated class name string should map back to the position of
@@ -173,7 +171,7 @@ test('emit sourcemaps for transformed modules without sourcemap warnings', async
 
   // `buttonClass` is declared on line 7 of the fixture,
   // with its css`` tag starting at column 27
-  expect(originalPosition).toEqual({
+  expect(originalPosition).toStrictEqual({
     source: '../test/fixtures/comprehensive.input.ts',
     line: 7,
     column: 27,

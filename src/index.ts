@@ -451,7 +451,6 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     filePath: string,
     meta: { magicString?: RolldownMagicString },
   ): Promise<{
-    // null when the code has no extractions and was left untouched
     magicString: RolldownMagicString | null;
     cssContent: string;
     stylesheetDependencies: Set<string>;
