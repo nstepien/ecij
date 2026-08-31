@@ -938,12 +938,24 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       return false;
     }
 
+    // Resolved import specifiers by importer and source. A file with several
+    // interpolations from the same module would otherwise resolve and load it
+    // once per interpolation, and again on every deferred retry.
+    const resolvedImports = new Map<string, Promise<string | undefined>>();
+
     // Resolve a `source` import specifier relative to `importer` and ensure
     // the target module has been parsed (so its caches are populated).
-    async function resolveImportedFile(
-      source: string,
-      importer: string,
-    ): Promise<string | undefined> {
+    function resolveImportedFile(source: string, importer: string): Promise<string | undefined> {
+      const key = `${importer}\0${source}`;
+      let resolved = resolvedImports.get(key);
+      if (resolved === undefined) {
+        resolved = loadImportedFile(source, importer);
+        resolvedImports.set(key, resolved);
+      }
+      return resolved;
+    }
+
+    async function loadImportedFile(source: string, importer: string): Promise<string | undefined> {
       const resolvedId = await context.resolve(source, importer);
       // External modules cannot be parsed for static values
       if (resolvedId == null || resolvedId.external !== false) return undefined;
