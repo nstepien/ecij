@@ -2,8 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "exactOptionalPropertyTypes": false,
-    "isolatedDeclarations": false,
-    "skipLibCheck": true
+    "isolatedDeclarations": false
   },
   "include": ["rolldown.config.ts", "vitest.config.ts"]
 }
