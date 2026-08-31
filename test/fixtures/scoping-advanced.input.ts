@@ -525,7 +525,42 @@ export function stableLet() {
 }
 
 // =============================================
-// 40. Module-level check: everything should still resolve
+// 40. Destructuring and asserted assignment targets
+// =============================================
+export function destructuringAssignmentTargets() {
+  let color = 'blue';
+  let size = '1px';
+  let weight = 'bold';
+  let family = 'serif';
+  let rest: string[];
+  let restObject: object;
+  // Array pattern with a default and a rest element
+  [color = 'green', ...rest] = ['purple'];
+  // Object pattern with a renamed key and a rest element
+  ({ s: size, ...restObject } = { s: '2px' });
+  // Type-asserted and non-null-asserted targets
+  (weight as string) = 'lighter';
+  family! = 'sans-serif';
+  console.log(rest, restObject);
+  // every binding above is reassigned → NOT extracted
+  return {
+    color: css`
+      color: ${color};
+    `,
+    size: css`
+      font-size: ${size};
+    `,
+    weight: css`
+      font-weight: ${weight};
+    `,
+    family: css`
+      font-family: ${family};
+    `,
+  };
+}
+
+// =============================================
+// 41. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
