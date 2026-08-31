@@ -560,7 +560,35 @@ export function destructuringAssignmentTargets() {
 }
 
 // =============================================
-// 41. Module-level check: everything should still resolve
+// 41. var redeclared with another initializer
+// =============================================
+export function varRedeclaration(flag: boolean) {
+  if (flag) {
+    var color = 'blue';
+  } else {
+    var color = 'green';
+  }
+  // both declarations write the same binding → no static value → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 42. Parameter defaults are evaluated outside the body scope
+// =============================================
+export function defaultParamScope(
+  x = css`
+    color: ${color};
+  `,
+) {
+  const color = 'blue';
+  // the default sees the module-level 'red', not the body's 'blue'
+  return [x, color];
+}
+
+// =============================================
+// 43. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};

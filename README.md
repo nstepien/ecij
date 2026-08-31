@@ -162,6 +162,8 @@ mistake fails loudly instead of silently shipping broken styles.
   the templates untransformed.
 - Interpolations must statically resolve to strings or numbers, see
   [Static resolution](#static-resolution).
+- Values imported with a query suffix (`?raw`, `?url`, `?worker`, …) are not
+  resolved: the query selects a different module than the file on disk.
 
 ## Development
 

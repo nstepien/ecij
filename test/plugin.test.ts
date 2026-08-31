@@ -1,7 +1,7 @@
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
 import { rolldown, type OutputAsset, type RolldownLog } from 'rolldown';
-import { build } from 'vite';
+import { build, createLogger, createServer } from 'vite';
 import { assert, expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
@@ -847,9 +847,19 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         \`
     	};
     }
-    var finalModuleCheck = "css-19c3cda9";
+    function varRedeclaration(flag) {
+    	if (flag) var color = "blue";
+    	else var color = "green";
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function defaultParamScope(x = "css-2bf65539") {
+    	return [x, "blue"];
+    }
+    var finalModuleCheck = "css-be3c655f";
     //#endregion
-    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, destructuringAssignmentTargets, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfAssignmentTarget, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, reassignedFromNestedFunction, reassignedLet, restParamShadow, stableLet, switchScope, updatedNumber, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, defaultParamScope, destructuredParam, destructuringAssignmentTargets, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfAssignmentTarget, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, reassignedFromNestedFunction, reassignedLet, restParamShadow, stableLet, switchScope, updatedNumber, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock, varRedeclaration };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -932,7 +942,11 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: blue;
     }
 
-    .css-19c3cda9 {
+    .css-2bf65539 {
+      color: red;
+    }
+
+    .css-be3c655f {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"
@@ -1639,6 +1653,26 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 5769,
       },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "344:   }
+    345:   return css\`
+    346:     color: \${color};
+                      ^
+    347:   \`;
+    348: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 346,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 5928,
+      },
     ]
   `);
 });
@@ -2003,6 +2037,81 @@ test('external modules in `export *` chains are skipped gracefully', async () =>
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('query-suffixed imports (`?raw`, `?url`) are not resolved from the file', async () => {
+  const fixturePath = './test/fixtures/query-import.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // The resolved ids carry a query, so they denote a different module than the
+  // file on disk: both templates must be skipped instead of inlining the file's
+  // default export
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/export-default-literal.ts?raw
+    var export_default_literal_default$1 = "// Default-exported string literal\\nexport default 'royalblue';\\n";
+    //#endregion
+    //#region test/fixtures/export-default-literal.ts?url
+    var export_default_literal_default = "data:video/mp2t;base64,Ly8gRGVmYXVsdC1leHBvcnRlZCBzdHJpbmcgbGl0ZXJhbApleHBvcnQgZGVmYXVsdCAncm95YWxibHVlJzsK";
+    //#endregion
+    //#region test/fixtures/query-import.input.ts
+    var usesRawImport = css\`
+      content: '\${export_default_literal_default$1}';
+    \`;
+    var usesUrlImport = css\`
+      background: url(\${export_default_literal_default});
+    \`;
+    //#endregion
+    export { usesRawImport, usesUrlImport };"
+  `);
+  expect(result.css).toBeUndefined();
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "3: import tokenUrl from "./export-default-literal.ts?url";
+    4: export const usesRawImport = css\`
+    5:   content: '\${tokenSource}';
+                     ^
+    6: \`;
+    7: export const usesUrlImport = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/query-import.input.ts",
+        "loc": {
+          "column": 14,
+          "file": "test/fixtures/query-import.input.ts",
+          "line": 5,
+        },
+        "message": "skipped CSS extraction — could not resolve "tokenSource" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 191,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "6: \`;
+    7: export const usesUrlImport = css\`
+    8:   background: url(\${tokenUrl});
+                           ^
+    9: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/query-import.input.ts",
+        "loc": {
+          "column": 20,
+          "file": "test/fixtures/query-import.input.ts",
+          "line": 8,
+        },
+        "message": "skipped CSS extraction — could not resolve "tokenUrl" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 263,
+      },
+    ]
+  `);
 });
 
 test('explicit exports with non-static values shadow `export *` sources', async () => {
@@ -2403,31 +2512,32 @@ test('mutually importing css modules resolve through the cycle', async () => {
   const fixturePath = './test/fixtures/cycle-a.input.ts';
   const result = await buildWithPlugin(fixturePath);
 
-  // cycle-a uses cycle-b's class and vice versa. Loading the in-flight module
+  // cycle-a uses cycle-b's class and vice versa, and its import-dependent
+  // declaration comes first in source order. Loading the in-flight module
   // is skipped (it would deadlock), but classes extracted so far are visible,
   // so both sides resolve.
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/cycle-a.input.ts
-    var aClass = "css-d4dd33b6";
-    var usesB = "css-9a8fadf3";
+    var usesB = "css-1c72e567";
+    var aClass = "css-111ca78a";
     //#endregion
     export { aClass, usesB };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-6df9125c {
       /* cycle-b */
-      &.css-d4dd33b6 {
+      &.css-111ca78a {
         color: green;
       }
-    }.css-d4dd33b6 {
-      /* cycle-a */
-      color: red;
-    }
-
-    .css-9a8fadf3 {
+    }.css-1c72e567 {
       &.css-6df9125c {
         color: blue;
       }
+    }
+
+    .css-111ca78a {
+      /* cycle-a */
+      color: red;
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`[]`);
@@ -2707,6 +2817,70 @@ test('skipped declarations do not register stylesheet dependencies', async () =>
       },
     ]
   `);
+});
+
+test('injected imports follow the hashbang and directive prologue', async () => {
+  const fixturePath = './test/fixtures/prologue.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // `#!…` and `'use client'` are only valid at the very top of the module, so
+  // the stylesheet import has to be inserted after them
+  expect(result.js).toMatchInlineSnapshot(`
+    "#!/usr/bin/env node
+    "use client";
+    //#region test/fixtures/prologue.input.ts
+    var prologueClass = "css-25cd8d45";
+    //#endregion
+    export { prologueClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-25cd8d45 {
+      color: red;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('vite dev: interpolations imported from other modules resolve', async () => {
+  // Vite's dev server has no `external` flag on resolved ids, throws on
+  // `ModuleInfo.code`, and its `this.load` does not transform plain files —
+  // cross-module resolution must go through the environment instead
+  const warnings: string[] = [];
+  const logger = createLogger('warn', { allowClearScreen: false });
+  logger.warn = (message) => {
+    warnings.push(message);
+  };
+  logger.error = (message) => {
+    warnings.push(message);
+  };
+
+  const server = await createServer({
+    configFile: false,
+    customLogger: logger,
+    appType: 'custom',
+    server: { middlewareMode: true, watch: null, hmr: false },
+    optimizeDeps: { noDiscovery: true, include: [] },
+    plugins: [ecij()],
+  });
+
+  try {
+    const result = await server.transformRequest('/test/fixtures/comprehensive.input.ts');
+    const code = result?.code ?? '';
+
+    // Every template is extracted, including the one interpolating values and a
+    // class name imported from other modules, whose stylesheet is imported first
+    expect(code).not.toContain('css`');
+    const [firstImport, secondImport] = code.split('\n');
+    expect(firstImport).toMatch(
+      /^import "\/test\/fixtures\/imported-style\.ts\.[0-9a-f]{8}\.css";$/,
+    );
+    expect(secondImport).toMatch(
+      /^import "\/test\/fixtures\/comprehensive\.input\.ts\.[0-9a-f]{8}\.css";$/,
+    );
+    expect(warnings).toStrictEqual([]);
+  } finally {
+    await server.close();
+  }
 });
 
 test('classPrefix setting', async () => {

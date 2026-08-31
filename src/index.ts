@@ -91,6 +91,8 @@ type ExportRecord =
 
 interface ParsedFileInfo {
   readonly declarations: readonly Declaration[];
+  // Where injected imports go: after the hashbang and the directive prologue
+  readonly importInsertionPosition: number;
   readonly importedIdentifiers: ReadonlyMap<string, ImportedIdentifier>;
   readonly exportNameToValueMap: ReadonlyMap<string, ExportRecord>;
   // Sources from `export * from 'mod'` (looked up when a name is missing from exportNameToValueMap)
@@ -115,6 +117,41 @@ function hashText(text: string): string {
 function stripQuery(id: string): string {
   const queryIndex = id.indexOf('?');
   return queryIndex === -1 ? id : id.slice(0, queryIndex);
+}
+
+// Queries Vite appends to the module ids it serves without changing what the
+// module is (cache busting, request markers). Any other query (`?raw`, `?url`,
+// `?worker`, …) selects a different module whose value cannot be read from the
+// file on disk.
+const TRANSPARENT_QUERY_KEYS = new Set(['v', 't', 'import', 'direct', 'used']);
+
+function hasTransparentQuery(id: string): boolean {
+  const queryIndex = id.indexOf('?');
+  if (queryIndex === -1) return true;
+  for (const key of new URLSearchParams(id.slice(queryIndex + 1)).keys()) {
+    if (!TRANSPARENT_QUERY_KEYS.has(key)) return false;
+  }
+  return true;
+}
+
+// The module graph's copy of a module's code, if it is loaded. Vite's dev
+// server exposes module info that throws on `code`.
+function getModuleCode(context: TransformPluginContext, filePath: string): string | undefined {
+  try {
+    return context.getModuleInfo(filePath)?.code ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Vite attaches its environment to plugin contexts; plain Rolldown does not.
+interface ViteEnvironment {
+  mode: string;
+  transformRequest?: (url: string) => Promise<unknown>;
+}
+
+function getViteEnvironment(context: TransformPluginContext): ViteEnvironment | undefined {
+  return (context as { environment?: ViteEnvironment }).environment;
 }
 
 // Unwraps parentheses and TypeScript type-assertion wrappers,
@@ -311,10 +348,16 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // UNRESOLVED_INTERPOLATION warning at the consumer.
     const sourceText =
       code ??
-      context.getModuleInfo(filePath)?.code ??
+      getModuleCode(context, filePath) ??
       (await context.fs.readFile(filePath, { encoding: 'utf8' }).catch(() => ''));
 
     const parseResult = parseSync(filePath, sourceText);
+    // Imports may only follow the hashbang and the directive prologue
+    // (`'use client'`), so they are injected where the first other statement starts.
+    const importInsertionPosition =
+      parseResult.program.body.find(
+        (statement) => !(statement.type === 'ExpressionStatement' && statement.directive != null),
+      )?.start ?? parseResult.program.end;
     const declarations: Declaration[] = [];
     const importedIdentifiers = new Map<string, ImportedIdentifier>();
     const exportNameToValueMap = new Map<string, ExportRecord>();
@@ -350,6 +393,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     const parsedInfo: ParsedFileInfo = {
       declarations,
+      importInsertionPosition,
       importedIdentifiers,
       exportNameToValueMap,
       exportStarSources,
@@ -596,8 +640,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       currentScope = currentScope.parent!;
     }
 
-    // When a parent node (function, for-statement, catch) already creates a scope,
-    // the child BlockStatement should reuse it instead of creating a redundant nested scope.
+    // When a parent node (for-statement, catch) already creates a scope for its
+    // head, the child BlockStatement reuses it instead of creating a nested scope.
     const skippedBlockStatements = new Set<BlockStatement>();
 
     // Recursively extract all binding identifiers from a pattern and record them
@@ -660,7 +704,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         }
       },
 
-      // Functions: create a scope for parameters and merge with the body's BlockStatement.
+      // Functions: a function scope for the parameters, which `var` declarations
+      // hoist to. The body block keeps its own nested scope, since parameter
+      // defaults cannot see the body's lexical declarations.
       // FunctionDeclaration names are bound in the containing scope (before pushScope).
       FunctionDeclaration(node) {
         if (node.id !== null) {
@@ -668,9 +714,6 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         }
         pushScope(true);
         recordParams(node.params);
-        if (node.body?.type === 'BlockStatement') {
-          skippedBlockStatements.add(node.body);
-        }
       },
       'FunctionDeclaration:exit': popScope,
 
@@ -681,18 +724,12 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           currentScope.identifiers.set(node.id.name, undefined);
         }
         recordParams(node.params);
-        if (node.body?.type === 'BlockStatement') {
-          skippedBlockStatements.add(node.body);
-        }
       },
       'FunctionExpression:exit': popScope,
 
       ArrowFunctionExpression(node) {
         pushScope(true);
         recordParams(node.params);
-        if (node.body.type === 'BlockStatement') {
-          skippedBlockStatements.add(node.body);
-        }
       },
       'ArrowFunctionExpression:exit': popScope,
 
@@ -798,6 +835,12 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         const init = node.init == null ? undefined : unwrapExpression(node.init);
 
         if (init !== undefined) {
+          // A redeclared `var` with an initializer writes to the existing
+          // binding, so neither initializer is its static value.
+          if (variableDeclarationKinds.at(-1) === 'var' && targetScope.identifiers.has(localName)) {
+            recordReassignment(localName);
+          }
+
           if (init.type === 'TaggedTemplateExpression') {
             // Bound as unknown below; a css`` candidate that gets extracted
             // replaces it with the generated class name.
@@ -900,10 +943,15 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     meta: { magicString?: RolldownMagicString },
   ): Promise<{
     magicString: RolldownMagicString | null;
+    importInsertionPosition: number;
     cssContent: string;
     stylesheetDependencies: Set<string>;
   }> {
-    const { declarations, importedIdentifiers } = await parseFile(context, filePath, code);
+    const { declarations, importInsertionPosition, importedIdentifiers } = await parseFile(
+      context,
+      filePath,
+      code,
+    );
 
     const cssExtractions: Array<{
       className: string;
@@ -957,8 +1005,11 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     async function loadImportedFile(source: string, importer: string): Promise<string | undefined> {
       const resolvedId = await context.resolve(source, importer);
-      // External modules cannot be parsed for static values
-      if (resolvedId == null || resolvedId.external !== false) return undefined;
+      // External modules cannot be parsed for static values. Vite's dev server
+      // resolves without an `external` flag, so only a set flag counts.
+      if (resolvedId == null || resolvedId.external) return undefined;
+      // A query selects a different module than the file (`?raw`, `?url`, …)
+      if (!hasTransparentQuery(resolvedId.id)) return undefined;
 
       const targetFilePath = stripQuery(resolvedId.id);
 
@@ -979,8 +1030,15 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
       addPendingLoad(filePath, targetFilePath);
       try {
-        // populate the cache for the imported file
-        await context.load(resolvedId);
+        // Run the imported file's transform so its parse info and extracted
+        // classes are available. Vite's dev server does not transform plain
+        // files through `this.load`; its environment does.
+        const environment = getViteEnvironment(context);
+        if (environment?.mode === 'dev' && environment.transformRequest !== undefined) {
+          await environment.transformRequest(resolvedId.id);
+        } else {
+          await context.load(resolvedId);
+        }
       } finally {
         removePendingLoad(filePath, targetFilePath);
       }
@@ -1330,10 +1388,29 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       return 'extracted';
     }
 
+    // True if resolving the declaration's interpolations must follow an import
+    function dependsOnImports(declaration: Declaration): boolean {
+      return declaration.node.quasi.expressions.some((expression) => {
+        const path = flattenMemberExpressionPath(expression);
+        return (
+          path !== undefined &&
+          !isBoundInScopeChain(path[0]!, declaration.scope) &&
+          importedIdentifiers.has(path[0]!)
+        );
+      });
+    }
+
     // Pass 2: With interpolations using resolved local references.
     // Declarations blocked on same-file forward references are retried until
-    // no further progress is made.
-    let remaining = declarations.filter(({ hasInterpolations }) => hasInterpolations);
+    // no further progress is made. Import-dependent declarations go last:
+    // following an import may hand control to a module of an import cycle that
+    // consults this module's extracted classes, so as many as possible should
+    // be extracted by then.
+    const interpolated = declarations.filter(({ hasInterpolations }) => hasInterpolations);
+    let remaining = [
+      ...interpolated.filter((declaration) => !dependsOnImports(declaration)),
+      ...interpolated.filter(dependsOnImports),
+    ];
 
     while (remaining.length !== 0) {
       const deferred: Declaration[] = [];
@@ -1358,6 +1435,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     if (replacements.length === 0) {
       return {
         magicString: null,
+        importInsertionPosition,
         cssContent: '',
         stylesheetDependencies,
       };
@@ -1387,6 +1465,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
     return {
       magicString,
+      importInsertionPosition,
       cssContent,
       stylesheetDependencies,
     };
@@ -1459,12 +1538,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         const cleanId = stripQuery(id);
 
         // Extract CSS from the code
-        const { magicString, cssContent, stylesheetDependencies } = await extractCssFromCode(
-          this,
-          code,
-          cleanId,
-          meta,
-        );
+        const { magicString, importInsertionPosition, cssContent, stylesheetDependencies } =
+          await extractCssFromCode(this, code, cleanId, meta);
 
         if (magicString === null) {
           return null;
@@ -1498,8 +1573,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           // including \ delimiters on Windows.
           importStatements.push(`import ${JSON.stringify(cssModuleId)};\n`);
 
-          // Add side-effect/CSS module imports at the top of the file.
-          magicString.prepend(importStatements.join(''));
+          // Add side-effect/CSS module imports at the top of the file, after
+          // any hashbang and directive prologue.
+          magicString.appendLeft(importInsertionPosition, importStatements.join(''));
         }
 
         if (meta.magicString) {
