@@ -173,6 +173,7 @@ export const usesBaseClass = css`
 // =============================================
 export function varDeclaration() {
   var color = 'magenta';
+  // a `var` shadows module-level color but, not being a `const`, is never resolved
   return css`
     color: ${color};
   `;

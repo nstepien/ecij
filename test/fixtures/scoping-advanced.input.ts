@@ -131,7 +131,8 @@ export function defaultParam(color = 'blue') {
 // =============================================
 export function forStatementShadow() {
   for (let color = 'blue', i = 0; i < 1; i++) {
-    // color has a known init value inside the for-scope and is never reassigned
+    // color is a `let` of the for-scope: it shadows module-level color and, not
+    // being a `const`, is never resolved
     console.log(
       css`
         color: ${color};
@@ -279,7 +280,8 @@ export function varInBlock() {
     `;
     console.log(inBlock);
   }
-  // var color hoists to function scope → resolves to 'blue', not module-level 'red'
+  // var color hoists to the function scope: it shadows module-level color for
+  // the whole function and, not being a `const`, is never resolved
   return css`
     color: ${color};
   `;
@@ -400,48 +402,7 @@ export function booleanLiteralShadow() {
 }
 
 // =============================================
-// 32. var-declared template in a block resolves the block's bindings
-// =============================================
-// The `var` binding hoists to the function scope, but the template's
-// interpolations are evaluated where the template appears.
-export function varDeclaredInBlock() {
-  {
-    const color = 'blue';
-    const padding = '4px';
-    // `color` is the block's 'blue', not the module's 'red'
-    var shadowed = css`
-      color: ${color};
-      font-size: ${size};
-    `;
-    // `padding` only exists inside the block
-    var padded = css`
-      padding: ${padding};
-    `;
-  }
-  // The bindings are usable out here, and `color` is the module's 'red' again
-  return css`
-    &.${shadowed},
-    &.${padded} {
-      color: ${color};
-    }
-  `;
-}
-
-// =============================================
-// 33. var-declared template in a loop body sees the loop variable
-// =============================================
-export function varDeclaredInLoop() {
-  for (const color of ['green', 'purple']) {
-    // The loop variable has no static value → NOT extracted
-    var perIteration = css`
-      color: ${color};
-    `;
-    console.log(perIteration);
-  }
-}
-
-// =============================================
-// 34. var declarator after a sibling initializer with nested declarations
+// 32. var declarator after a sibling initializer with nested declarations
 // =============================================
 // The nested `let` inside the first declarator's initializer must not make the
 // second declarator block-scoped: `color` still hoists to the function scope.
@@ -454,128 +415,25 @@ export function varAfterNestedDeclaration() {
       color = 'blue';
     console.log(hasNested);
   }
-  // → 'blue', not module-level 'red'
+  // → shadowed by the hoisted var: NOT extracted (not module-level 'red')
   return css`
     color: ${color};
   `;
 }
 
 // =============================================
-// 35. let reassigned after its literal initializer
-// =============================================
-export function reassignedLet() {
-  let color = 'blue';
-  color = 'green';
-  // color is reassigned → no static value → NOT extracted
-  return css`
-    color: ${color};
-  `;
-}
-
-// =============================================
-// 36. Binding reassigned from a nested function
-// =============================================
-export function reassignedFromNestedFunction() {
-  let color = 'blue';
-  const darken = () => {
-    color = 'navy';
-  };
-  darken();
-  // color may change at runtime → NOT extracted
-  return css`
-    color: ${color};
-  `;
-}
-
-// =============================================
-// 37. Existing binding used as a for-of target
-// =============================================
-export function forOfAssignmentTarget() {
-  let color = 'blue';
-  for (color of ['green', 'purple']) {
-    console.log(color);
-  }
-  // color is assigned by the loop → NOT extracted
-  return css`
-    color: ${color};
-  `;
-}
-
-// =============================================
-// 38. Update expression on a numeric binding
-// =============================================
-export function updatedNumber() {
-  let size = 1;
-  size++;
-  // size is updated → NOT extracted
-  return css`
-    font-size: ${size}px;
-  `;
-}
-
-// =============================================
-// 39. let with a literal initializer that is never reassigned
+// 33. let with a literal initializer is not resolved
 // =============================================
 export function stableLet() {
   let color = 'blue';
-  // never reassigned → resolves like a const
+  // only `const` bindings are static → NOT extracted
   return css`
     color: ${color};
   `;
 }
 
 // =============================================
-// 40. Destructuring and asserted assignment targets
-// =============================================
-export function destructuringAssignmentTargets() {
-  let color = 'blue';
-  let size = '1px';
-  let weight = 'bold';
-  let family = 'serif';
-  let rest: string[];
-  let restObject: object;
-  // Array pattern with a default and a rest element
-  [color = 'green', ...rest] = ['purple'];
-  // Object pattern with a renamed key and a rest element
-  ({ s: size, ...restObject } = { s: '2px' });
-  // Type-asserted and non-null-asserted targets
-  (weight as string) = 'lighter';
-  family! = 'sans-serif';
-  console.log(rest, restObject);
-  // every binding above is reassigned → NOT extracted
-  return {
-    color: css`
-      color: ${color};
-    `,
-    size: css`
-      font-size: ${size};
-    `,
-    weight: css`
-      font-weight: ${weight};
-    `,
-    family: css`
-      font-family: ${family};
-    `,
-  };
-}
-
-// =============================================
-// 41. var redeclared with another initializer
-// =============================================
-export function varRedeclaration(flag: boolean) {
-  if (flag) {
-    var color = 'blue';
-  } else {
-    var color = 'green';
-  }
-  // both declarations write the same binding → no static value → NOT extracted
-  return css`
-    color: ${color};
-  `;
-}
-
-// =============================================
-// 42. Parameter defaults are evaluated outside the body scope
+// 34. Parameter defaults are evaluated outside the body scope
 // =============================================
 export function defaultParamScope(
   x = css`
@@ -588,57 +446,7 @@ export function defaultParamScope(
 }
 
 // =============================================
-// 43. for-of target written while the body shadows it
-// =============================================
-export function forOfTargetWithShadowingBody() {
-  let color = 'red';
-  for (color of ['blue']) {
-    // the body's own `color` must not swallow the head's write to the outer one
-    let color = 'ignored';
-    console.log(color);
-  }
-  // color is written by the loop → NOT extracted
-  return css`
-    color: ${color};
-  `;
-}
-
-// =============================================
-// 44. Write inside a for-init expression while the body shadows it
-// =============================================
-export function forInitWriteWithShadowingBody() {
-  let color = 'red';
-  for (let i = ((color = 'blue'), 0); i < 1; i++) {
-    let color = 'ignored';
-    console.log(color);
-  }
-  // color is written by the loop head → NOT extracted
-  return css`
-    color: ${color};
-  `;
-}
-
-// =============================================
-// 45. Write inside a switch discriminant with a case-level declaration
-// =============================================
-export function switchDiscriminantWrite() {
-  let color = 'red';
-  switch ((color = 'blue')) {
-    case 'blue':
-      let color = 'ignored';
-      console.log(color);
-      break;
-    default:
-      break;
-  }
-  // color is written by the discriminant → NOT extracted
-  return css`
-    color: ${color};
-  `;
-}
-
-// =============================================
-// 47. Parameter defaults cannot see the body's `var` declarations either
+// 35. Parameter defaults cannot see the body's `var` declarations either
 // =============================================
 export function defaultParamVsBodyVar(
   className = css`
@@ -652,59 +460,7 @@ export function defaultParamVsBodyVar(
 }
 
 // =============================================
-// 48. Body `var` named like a parameter writes to the parameter
-// =============================================
-export function paramWrittenByBodyVar(color: string) {
-  const before = css`
-    color: ${color};
-  `;
-  var color = 'blue';
-  // color is a parameter that the body reassigns → NOT extracted
-  return [before, color];
-}
-
-// =============================================
-// 49. var used before its declaration
-// =============================================
-export function varUsedBeforeDeclaration() {
-  const early = css`
-    color: ${tone!};
-  `;
-  var tone = 'peru';
-  // tone is still `undefined` where the template runs → NOT extracted
-  return [early, tone];
-}
-
-// =============================================
-// 50. var initialized conditionally
-// =============================================
-export function conditionalVar(flag: boolean) {
-  if (flag) {
-    var color = 'blue';
-  }
-  // color may still be `undefined` → NOT extracted
-  return css`
-    color: ${color!};
-  `;
-}
-
-// =============================================
-// 51. var initialized inside a try block
-// =============================================
-export function tryVar() {
-  try {
-    var color = 'blue';
-  } catch {
-    // ignore
-  }
-  // the initializer may not have run → NOT extracted
-  return css`
-    color: ${color!};
-  `;
-}
-
-// =============================================
-// 52. Module-level check: everything should still resolve
+// 36. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};

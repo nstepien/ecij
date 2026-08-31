@@ -23,16 +23,6 @@ export const usesTypedTone = css`
   border-color: ${nsAnnotated};
 `;
 
-// A type-asserted assignment target only reaches the plugin as such here:
-// Vite strips the assertion before its transforms run. The binding is
-// reassigned, so it has no static value.
-let asserted = 'olive';
-(asserted as string) = 'lime';
-
-export const usesAssertedTarget = css`
-  color: ${asserted};
-`;
-
 // TypeScript enums and namespaces only reach the plugin as such here (Vite
 // lowers them first). An enum shadows the outer binding of the same name…
 export function enumShadow() {

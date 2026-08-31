@@ -3,7 +3,6 @@ import { relative } from 'node:path';
 import { cwd } from 'node:process';
 
 import type {
-  AssignmentTargetMaybeDefault,
   BindingPattern,
   BlockStatement,
   Expression,
@@ -43,9 +42,6 @@ export interface Configuration {
 interface Scope {
   // undefined value means "declared but value unknown at build time" (e.g. function params)
   identifiers: Map<string, string | undefined>;
-  // Start offsets of the `var` declarators that recorded a value: the binding
-  // is still `undefined` for a template placed before its declaration
-  varDeclarationStarts: Map<string, number>;
   parent: Scope | null;
   // true for function/module/static-block scopes (where `var` bindings land)
   isFunctionScope: boolean;
@@ -64,6 +60,10 @@ interface Declaration {
 interface CssTagCandidate {
   // Variable the template is assigned to, if any
   localName: string | undefined;
+  // Whether that variable is a `const` — the only kind of binding with a static
+  // value; a `let`/`var` may be reassigned, and a `var` is `undefined` until
+  // its declaration has run
+  isConst: boolean;
   node: TaggedTemplateExpression;
   // Local name of the tag, a binding of ecij's `css`
   tagName: string;
@@ -260,13 +260,9 @@ function flattenMemberExpressionPath(expression: Expression): string[] | undefin
   return names;
 }
 
-// Calls `callback` with every identifier a binding pattern or an assignment
-// target binds: `x`, `[x = 1, ...rest]`, `{ a: x, ...rest }` and, for assignment
-// targets, `(x as T)`. Member expressions do not bind anything and are ignored.
-function forEachBoundName(
-  pattern: BindingPattern | AssignmentTargetMaybeDefault,
-  callback: (name: string) => void,
-): void {
+// Calls `callback` with every identifier a binding pattern binds:
+// `x`, `[x = 1, ...rest]`, `{ a: x, ...rest }`.
+function forEachBoundName(pattern: BindingPattern, callback: (name: string) => void): void {
   switch (pattern.type) {
     case 'Identifier':
       callback(pattern.name);
@@ -288,17 +284,6 @@ function forEachBoundName(
     case 'AssignmentPattern':
       forEachBoundName(pattern.left, callback);
       break;
-    case 'TSAsExpression':
-    case 'TSSatisfiesExpression':
-    case 'TSNonNullExpression':
-    case 'TSTypeAssertion': {
-      // `(x as T) = …`
-      const expression = unwrapExpression(pattern.expression);
-      if (expression.type === 'Identifier') {
-        callback(expression.name);
-      }
-      break;
-    }
   }
 }
 
@@ -456,29 +441,12 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     const defaultImportLocalSpans = new Set<string>();
 
     // Scope tracking: root scope for module-level declarations
-    const rootScope: Scope = {
-      identifiers: new Map(),
-      varDeclarationStarts: new Map(),
-      parent: null,
-      isFunctionScope: true,
-    };
+    const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
     let currentScope = rootScope;
     // Kinds of the `VariableDeclaration`s being visited, innermost last. An
     // initializer can itself contain declarations (e.g. a function body), so a
     // single slot would be clobbered before the next declarator is visited.
     const variableDeclarationKinds: string[] = [];
-    // Bindings written to after their declaration (`x = …`, `x++`,
-    // `for (x of …)`), with the scope the write appears in. A reassigned
-    // binding has no static value; applied once the visit completes so writes
-    // preceding a hoisted declaration are covered too.
-    const reassignments: Array<{ name: string; scope: Scope }> = [];
-
-    function recordReassignment(name: string) {
-      reassignments.push({ name, scope: currentScope });
-    }
-
-    // Local names `export default`ed before their declaration
-    const forwardDefaultExports = new Set<string>();
 
     const parsedInfo: ParsedFileInfo = {
       declarations,
@@ -648,10 +616,14 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // Records `node` as a css`` candidate if its tag is a local binding of
     // ecij's `css`; any other tagged template is left alone.
     function addCssTagCandidate(
-      localName: string | undefined,
       node: TaggedTemplateExpression,
-      bindingScope = currentScope,
-      exportedAs?: string | undefined,
+      binding: {
+        localName?: string;
+        isConst?: boolean;
+        // Defaults to the current scope
+        scope?: Scope;
+        exportedAs?: string;
+      } = {},
     ) {
       if (!(node.tag.type === 'Identifier' && cssTagNames.has(node.tag.name))) {
         return;
@@ -659,17 +631,19 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
       processedTaggedTemplateExpressions.add(node);
       cssTagCandidates.push({
-        localName,
+        localName: binding.localName,
+        isConst: binding.isConst ?? false,
         node,
         tagName: node.tag.name,
         scope: currentScope,
-        bindingScope,
-        exportedAs,
+        bindingScope: binding.scope ?? currentScope,
+        exportedAs: binding.exportedAs,
       });
     }
 
     function extractCssTagCandidate({
       localName,
+      isConst,
       node,
       tagName,
       scope,
@@ -698,9 +672,12 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         scope,
       });
 
-      // Record generated class names for css declarations
+      // Record generated class names for css declarations (a `let`/`var` one
+      // stays unknown, see `CssTagCandidate.isConst`)
       if (localName !== undefined) {
-        recordIdentifierWithValue(localName, className, bindingScope, true);
+        if (isConst) {
+          recordIdentifierWithValue(localName, className, bindingScope, true);
+        }
       } else if (exportedAs !== undefined && scope === rootScope) {
         // `export default css\`...\`` has no local name but is reachable
         // via the `default` export.
@@ -714,38 +691,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     }
 
     function pushScope(isFunctionScope = false) {
-      currentScope = {
-        identifiers: new Map(),
-        varDeclarationStarts: new Map(),
-        parent: currentScope,
-        isFunctionScope,
-      };
-    }
-
-    // Nesting depth of conditional constructs (if, loops, try, switch) within
-    // the current function. A `var` initialized inside one may still be
-    // `undefined` when a template evaluates, so its value is not static.
-    let conditionalDepth = 0;
-    const conditionalDepths: number[] = [];
-
-    function enterConditional() {
-      conditionalDepth++;
-    }
-
-    function leaveConditional() {
-      conditionalDepth--;
-    }
-
-    // Function-like scopes start a fresh conditional depth
-    function enterFunction(isFunctionScope = true) {
-      pushScope(isFunctionScope);
-      conditionalDepths.push(conditionalDepth);
-      conditionalDepth = 0;
-    }
-
-    function leaveFunction() {
-      conditionalDepth = conditionalDepths.pop()!;
-      popScope();
+      currentScope = { identifiers: new Map(), parent: currentScope, isFunctionScope };
     }
 
     function findFunctionScope(): Scope {
@@ -765,7 +711,6 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     const skippedBlockStatements = new Set<BlockStatement>();
     // Function bodies are function scopes of their own, see `BlockStatement`
     const functionBodies = new Set<BlockStatement>();
-    const functionBodyScopes = new Set<Scope>();
     // The switch scope is entered with the first case, see `SwitchStatement`
     const firstSwitchCases = new Set<SwitchCase>();
 
@@ -796,12 +741,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         // A function body is where its `var` declarations hoist to. Parameter
         // defaults are evaluated in the enclosing parameter scope and cannot
         // see the body's declarations.
-        if (functionBodies.has(node)) {
-          pushScope(true);
-          functionBodyScopes.add(currentScope);
-        } else {
-          pushScope();
-        }
+        pushScope(functionBodies.has(node));
       },
 
       'BlockStatement:exit'(node) {
@@ -818,17 +758,17 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         if (node.id !== null) {
           currentScope.identifiers.set(node.id.name, undefined);
         }
-        enterFunction();
+        pushScope(true);
         recordParams(node.params);
         if (node.body?.type === 'BlockStatement') {
           functionBodies.add(node.body);
         }
       },
-      'FunctionDeclaration:exit': leaveFunction,
+      'FunctionDeclaration:exit': popScope,
 
       // FunctionExpression names are only visible inside the function body (for recursion).
       FunctionExpression(node) {
-        enterFunction();
+        pushScope(true);
         if (node.id !== null) {
           currentScope.identifiers.set(node.id.name, undefined);
         }
@@ -837,68 +777,37 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           functionBodies.add(node.body);
         }
       },
-      'FunctionExpression:exit': leaveFunction,
+      'FunctionExpression:exit': popScope,
 
       ArrowFunctionExpression(node) {
-        enterFunction();
+        pushScope(true);
         recordParams(node.params);
         if (node.body.type === 'BlockStatement') {
           functionBodies.add(node.body);
         }
       },
-      'ArrowFunctionExpression:exit': leaveFunction,
+      'ArrowFunctionExpression:exit': popScope,
 
-      // Conditional constructs, see `conditionalDepth`
-      IfStatement: enterConditional,
-      'IfStatement:exit': leaveConditional,
-      WhileStatement: enterConditional,
-      'WhileStatement:exit': leaveConditional,
-      DoWhileStatement: enterConditional,
-      'DoWhileStatement:exit': leaveConditional,
-      TryStatement: enterConditional,
-      'TryStatement:exit': leaveConditional,
-
-      // Loops: a scope for the head (loop variable declarations and the
-      // writes of head expressions). The body block keeps its own nested
-      // scope, so a body-level declaration cannot swallow a head write.
+      // Loops: a scope for the head's declarations; the body block keeps its
+      // own nested scope (a body-level declaration may shadow a loop variable).
       ForStatement() {
         pushScope();
-        enterConditional();
       },
-      'ForStatement:exit'() {
-        leaveConditional();
-        popScope();
-      },
+      'ForStatement:exit': popScope,
 
-      ForInStatement(node) {
-        // A head target that is not a declaration writes to an existing binding
-        if (node.left.type !== 'VariableDeclaration') {
-          forEachBoundName(node.left, recordReassignment);
-        }
+      ForInStatement() {
         pushScope();
-        enterConditional();
       },
-      'ForInStatement:exit'() {
-        leaveConditional();
-        popScope();
-      },
+      'ForInStatement:exit': popScope,
 
-      ForOfStatement(node) {
-        if (node.left.type !== 'VariableDeclaration') {
-          forEachBoundName(node.left, recordReassignment);
-        }
+      ForOfStatement() {
         pushScope();
-        enterConditional();
       },
-      'ForOfStatement:exit'() {
-        leaveConditional();
-        popScope();
-      },
+      'ForOfStatement:exit': popScope,
 
       // Switch statements: a scope for case-level declarations, entered with
       // the first case so the discriminant is visited in the enclosing scope.
       SwitchStatement(node) {
-        enterConditional();
         if (node.cases.length !== 0) {
           firstSwitchCases.add(node.cases[0]!);
         }
@@ -912,7 +821,6 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         if (node.cases.length !== 0) {
           popScope();
         }
-        leaveConditional();
       },
 
       // Catch clauses: create a scope for the catch parameter, merge with body BlockStatement
@@ -944,17 +852,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement")
       // They are function-scoped for `var` declarations.
       StaticBlock() {
-        enterFunction();
+        pushScope(true);
       },
-      'StaticBlock:exit': leaveFunction,
-
-      AssignmentExpression(node) {
-        forEachBoundName(node.left, recordReassignment);
-      },
-
-      UpdateExpression(node) {
-        forEachBoundName(node.argument, recordReassignment);
-      },
+      'StaticBlock:exit': popScope,
 
       // TypeScript enums and namespaces bind their name in the containing scope
       // (only seen with raw TypeScript, i.e. outside Vite); ambient
@@ -976,9 +876,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
       // A namespace body is a function-like scope of its own
       TSModuleBlock() {
-        enterFunction();
+        pushScope(true);
       },
-      'TSModuleBlock:exit': leaveFunction,
+      'TSModuleBlock:exit': popScope,
 
       // `import x = …` binds `x` in the containing scope (type-only ones are erased)
       TSImportEqualsDeclaration(node) {
@@ -1008,35 +908,16 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         const localName = node.id.name;
         const init = node.init == null ? undefined : unwrapExpression(node.init);
 
+        // Only a `const` has a static value: a `let`/`var` may be reassigned,
+        // and a `var` is `undefined` until its declaration has run.
+        const isConst = variableDeclarationKinds.at(-1) === 'const';
+
         if (init !== undefined) {
-          // A redeclared `var` with an initializer writes to the existing
-          // binding, so neither initializer is its static value; a body `var`
-          // named like a parameter likewise writes to the parameter.
-          if (
-            variableDeclarationKinds.at(-1) === 'var' &&
-            (targetScope.identifiers.has(localName) ||
-              (functionBodyScopes.has(targetScope) &&
-                targetScope.parent!.identifiers.has(localName)))
-          ) {
-            recordReassignment(localName);
-          }
-
-          // A `var` is `undefined` until its declaration has run: initialized
-          // conditionally it has no static value at all, otherwise only for
-          // templates placed after the declaration.
-          if (variableDeclarationKinds.at(-1) === 'var') {
-            if (conditionalDepth > 0) {
-              recordReassignment(localName);
-            } else {
-              targetScope.varDeclarationStarts.set(localName, node.start);
-            }
-          }
-
           if (init.type === 'TaggedTemplateExpression') {
-            // Bound as unknown below; a css`` candidate that gets extracted
-            // replaces it with the generated class name.
-            addCssTagCandidate(localName, init, targetScope);
-          } else {
+            // Bound as unknown below; a `const` css`` candidate that gets
+            // extracted replaces it with the generated class name.
+            addCssTagCandidate(init, { localName, isConst, scope: targetScope });
+          } else if (isConst) {
             const value = resolveStaticExpression(init);
             if (value !== undefined) {
               recordIdentifierWithValue(localName, value, targetScope);
@@ -1052,7 +933,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       TaggedTemplateExpression(node) {
         if (!processedTaggedTemplateExpressions.has(node)) {
           // No variable name for inline expressions
-          addCssTagCandidate(undefined, node);
+          addCssTagCandidate(node);
         }
       },
 
@@ -1070,19 +951,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
             : unwrapExpression(node.declaration);
         if (declaration === undefined) return;
 
-        // `export default <identifier>` snapshots the binding's value when the
-        // statement runs: a binding declared later (`var` hoisting, TDZ) has
-        // none. Imports are live bindings and were recorded as re-exports.
-        if (
-          declaration.type === 'Identifier' &&
-          !rootScope.identifiers.has(declaration.name) &&
-          !importedIdentifiers.has(declaration.name)
-        ) {
-          forwardDefaultExports.add(declaration.name);
-        }
-
         if (declaration.type === 'TaggedTemplateExpression') {
-          addCssTagCandidate(undefined, declaration, currentScope, 'default');
+          addCssTagCandidate(declaration, { exportedAs: 'default' });
           return;
         }
 
@@ -1103,25 +973,6 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // Every scope is populated now, so tag shadowing can be decided
     for (const candidate of cssTagCandidates) {
       extractCssTagCandidate(candidate);
-    }
-
-    // A reassigned binding has no static value wherever it was declared, and
-    // neither do its exports.
-    for (const { name, scope } of reassignments) {
-      for (let current: Scope | null = scope; current !== null; current = current.parent) {
-        if (!current.identifiers.has(name)) continue;
-        current.identifiers.set(name, undefined);
-        if (current === rootScope) {
-          for (const exportedName of localNameToExportedNamesMap.get(name) ?? []) {
-            exportNameToValueMap.set(exportedName, { kind: 'unresolved', localName: name });
-          }
-        }
-        break;
-      }
-    }
-
-    for (const localName of forwardDefaultExports) {
-      exportNameToValueMap.set('default', { kind: 'unresolved', localName });
     }
 
     // Explicit exports that never received a static value must still shadow
@@ -1404,14 +1255,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       identifierName: string,
       scope: Scope,
       dependencies: Set<string>,
-      // Where the interpolation is evaluated, for `var` bindings declared later
-      position: number,
     ): Promise<string | undefined> {
       if (scope.identifiers.has(identifierName)) {
-        const varDeclaredAt = scope.varDeclarationStarts.get(identifierName);
-        if (varDeclaredAt !== undefined && varDeclaredAt > position) {
-          return undefined;
-        }
         // May return undefined for declarations with unknown values (e.g. function params),
         // which stops the lookup and signals "can't resolve"
         return scope.identifiers.get(identifierName);
@@ -1420,7 +1265,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       // Walk up the scope chain to find the identifier
       const { parent } = scope;
       if (parent !== null) {
-        return resolveValue(identifierName, parent, dependencies, position);
+        return resolveValue(identifierName, parent, dependencies);
       }
 
       // Check if it's an imported identifier
@@ -1557,12 +1402,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
             resolvedValue =
               path.length === 1
-                ? await resolveValue(
-                    path[0]!,
-                    declaration.scope,
-                    dependencies,
-                    declaration.node.start,
-                  )
+                ? await resolveValue(path[0]!, declaration.scope, dependencies)
                 : await resolveMemberPath(path, declaration.scope, dependencies);
 
             // A class name of a same-file declaration that has not been

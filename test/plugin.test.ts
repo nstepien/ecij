@@ -404,7 +404,12 @@ test('variable scoping and shadowing', async () => {
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/scoping.input.ts
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/scoping.input.ts
     var topLevelStyle = "css-0195f7e3";
     function functionShadow() {
     	return "css-411204c9";
@@ -448,7 +453,9 @@ test('variable scoping and shadowing', async () => {
     }
     var usesBaseClass = "css-ffc7c674";
     function varDeclaration() {
-    	return "css-68d2d974";
+    	return css\`
+        color: \${"magenta"};
+      \`;
     }
     var afterVarDecl = "css-5519aacd";
     function sequentialBlocks() {
@@ -555,10 +562,6 @@ test('variable scoping and shadowing', async () => {
       }
     }
 
-    .css-68d2d974 {
-      color: magenta;
-    }
-
     .css-5519aacd {
       color: red;
     }
@@ -581,7 +584,30 @@ test('variable scoping and shadowing', async () => {
       font-weight: bold;
     }/*$vite$:1*/"
   `);
-  expect(result.logs).toMatchInlineSnapshot(`[]`);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "119:   var color = "magenta";
+    120:   return css\`
+    121:     color: \${color};
+                      ^
+    122:   \`;
+    123: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping.input.ts",
+          "line": 121,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 2183,
+      },
+    ]
+  `);
 });
 
 test('advanced scoping: function parameters, for-of/in, catch, static blocks', async () => {
@@ -649,7 +675,9 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       \`;
     }
     function forStatementShadow() {
-    	for (let i = 0; i < 1; i++) console.log("css-c7155baa");
+    	for (let color = "blue", i = 0; i < 1; i++) console.log(css\`
+            color: \${color};
+          \`);
     	return "css-f19ded5e";
     }
     var MyClass = class MyClass {
@@ -709,8 +737,16 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       \`;
     }
     function varInBlock() {
-    	console.log("css-b7f7cd35");
-    	return "css-14873b06";
+    	{
+    		var color = "blue";
+    		const inBlock = css\`
+          color: \${color};
+        \`;
+    		console.log(inBlock);
+    	}
+    	return css\`
+        color: \${color};
+      \`;
     }
     function varForOf() {
     	for (var color of ["blue", "green"]) console.log(css\`
@@ -768,152 +804,29 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         color: \${true};
       \`;
     }
-    function varDeclaredInBlock() {
-    	return "css-338b1b83";
-    }
-    function varDeclaredInLoop() {
-    	for (const color of ["green", "purple"]) {
-    		var perIteration = css\`
-          color: \${color};
-        \`;
-    		console.log(perIteration);
-    	}
-    }
     function varAfterNestedDeclaration() {
     	var hasNested = () => {
     		return "unused";
-    	};
+    	}, color = "blue";
     	console.log(hasNested);
-    	return "css-ecc4dd17";
-    }
-    function reassignedLet() {
-    	let color = "blue";
-    	color = "green";
     	return css\`
         color: \${color};
-      \`;
-    }
-    function reassignedFromNestedFunction() {
-    	let color = "blue";
-    	const darken = () => {
-    		color = "navy";
-    	};
-    	darken();
-    	return css\`
-        color: \${color};
-      \`;
-    }
-    function forOfAssignmentTarget() {
-    	let color = "blue";
-    	for (color of ["green", "purple"]) console.log(color);
-    	return css\`
-        color: \${color};
-      \`;
-    }
-    function updatedNumber() {
-    	let size = 1;
-    	size++;
-    	return css\`
-        font-size: \${size}px;
       \`;
     }
     function stableLet() {
-    	return "css-6d885ac7";
-    }
-    function destructuringAssignmentTargets() {
-    	let color = "blue";
-    	let size = "1px";
-    	let weight = "bold";
-    	let family = "serif";
-    	let rest;
-    	let restObject;
-    	[color = "green", ...rest] = ["purple"];
-    	({s: size, ...restObject} = { s: "2px" });
-    	weight = "lighter";
-    	family = "sans-serif";
-    	console.log(rest, restObject);
-    	return {
-    		color: css\`
-          color: \${color};
-        \`,
-    		size: css\`
-          font-size: \${size};
-        \`,
-    		weight: css\`
-          font-weight: \${weight};
-        \`,
-    		family: css\`
-          font-family: \${family};
-        \`
-    	};
-    }
-    function varRedeclaration(flag) {
-    	if (flag) var color = "blue";
-    	else var color = "green";
     	return css\`
-        color: \${color};
+        color: \${"blue"};
       \`;
     }
-    function defaultParamScope(x = "css-2bf65539") {
+    function defaultParamScope(x = "css-338b1b83") {
     	return [x, "blue"];
     }
-    function forOfTargetWithShadowingBody() {
-    	let color = "red";
-    	for (color of ["blue"]) console.log("ignored");
-    	return css\`
-        color: \${color};
-      \`;
-    }
-    function forInitWriteWithShadowingBody() {
-    	let color = "red";
-    	for (let i = (color = "blue", 0); i < 1; i++) console.log("ignored");
-    	return css\`
-        color: \${color};
-      \`;
-    }
-    function switchDiscriminantWrite() {
-    	let color = "red";
-    	switch (color = "blue") {
-    		case "blue": console.log("ignored");
-    	}
-    	return css\`
-        color: \${color};
-      \`;
-    }
-    function defaultParamVsBodyVar(className = "css-ad59794e") {
+    function defaultParamVsBodyVar(className = "css-5a8cc836") {
     	return [className, "blue"];
     }
-    function paramWrittenByBodyVar(color) {
-    	const before = css\`
-        color: \${color};
-      \`;
-    	var color = "blue";
-    	return [before, color];
-    }
-    function varUsedBeforeDeclaration() {
-    	const early = css\`
-        color: \${tone};
-      \`;
-    	var tone = "peru";
-    	return [early, tone];
-    }
-    function conditionalVar(flag) {
-    	if (flag) var color = "blue";
-    	return css\`
-        color: \${color};
-      \`;
-    }
-    function tryVar() {
-    	try {
-    		var color = "blue";
-    	} catch {}
-    	return css\`
-        color: \${color};
-      \`;
-    }
-    var finalModuleCheck = "css-375fe53a";
+    var finalModuleCheck = "css-361b5f22";
     //#endregion
-    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, conditionalVar, defaultParam, defaultParamScope, defaultParamVsBodyVar, destructuredParam, destructuringAssignmentTargets, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forInitWriteWithShadowingBody, forOfAssignmentTarget, forOfDestructuring, forOfShadow, forOfTargetWithShadowingBody, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, paramWrittenByBodyVar, reassignedFromNestedFunction, reassignedLet, restParamShadow, stableLet, switchDiscriminantWrite, switchScope, tryVar, updatedNumber, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock, varRedeclaration, varUsedBeforeDeclaration };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, defaultParamScope, defaultParamVsBodyVar, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, stableLet, switchScope, varAfterNestedDeclaration, varForIn, varForOf, varInBlock };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -930,10 +843,6 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
 
     .css-a30d4f0f {
       color: red;
-    }
-
-    .css-c7155baa {
-      color: blue;
     }
 
     .css-f19ded5e {
@@ -956,14 +865,6 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: red;
     }
 
-    .css-b7f7cd35 {
-      color: blue;
-    }
-
-    .css-14873b06 {
-      color: blue;
-    }
-
     .css-9c07daeb {
       color: blue;
     }
@@ -972,39 +873,15 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: red;
     }
 
-    .css-c5b52b7e {
-      color: blue;
-          font-size: 16px;
-    }
-
-    .css-2a8701d8 {
-      padding: 4px;
-    }
-
     .css-338b1b83 {
-      &.css-c5b52b7e,
-        &.css-2a8701d8 {
-          color: red;
-        }
-    }
-
-    .css-ecc4dd17 {
-      color: blue;
-    }
-
-    .css-6d885ac7 {
-      color: blue;
-    }
-
-    .css-2bf65539 {
       color: red;
     }
 
-    .css-ad59794e {
+    .css-5a8cc836 {
       color: red;
     }
 
-    .css-375fe53a {
+    .css-361b5f22 {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"
@@ -1193,6 +1070,26 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       },
       {
         "code": "PLUGIN_WARNING",
+        "frame": "73:   for (let color = "blue", i = 0; i < 1; i++) {
+    74:     console.log(css\`
+    75:         color: \${color};
+                         ^
+    76:       \`);
+    77:   }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 17,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 75,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1330,
+      },
+      {
+        "code": "PLUGIN_WARNING",
         "frame": "92:   function color() {}
     93:   return css\`
     94:     color: \${color};
@@ -1350,6 +1247,46 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 2592,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "153:     var color = "blue";
+    154:     const inBlock = css\`
+    155:       color: \${color};
+                        ^
+    156:     \`;
+    157:     console.log(inBlock);",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 15,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 155,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 2701,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "158:   }
+    159:   return css\`
+    160:     color: \${color};
+                      ^
+    161:   \`;
+    162: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 160,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 2769,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1533,343 +1470,43 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "254:   for (const color of ["green", "purple"]) {
-    255:     var perIteration = css\`
-    256:       color: \${color};
-                        ^
-    257:     \`;
-    258:     console.log(perIteration);",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 15,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 256,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 4350,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "275:   color = "green";
-    276:   return css\`
-    277:     color: \${color};
+        "frame": "241:   }
+    242:   return css\`
+    243:     color: \${color};
                       ^
-    278:   \`;
-    279: }",
+    244:   \`;
+    245: }",
         "hook": "transform",
         "id": "test/fixtures/scoping-advanced.input.ts",
         "loc": {
           "column": 13,
           "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 277,
+          "line": 243,
         },
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 4708,
+        "pos": 4110,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "285:   darken();
-    286:   return css\`
-    287:     color: \${color};
+        "frame": "247:   let color = "blue";
+    248:   return css\`
+    249:     color: \${color};
                       ^
-    288:   \`;
-    289: }",
+    250:   \`;
+    251: }",
         "hook": "transform",
         "id": "test/fixtures/scoping-advanced.input.ts",
         "loc": {
           "column": 13,
           "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 287,
+          "line": 249,
         },
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 4876,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "294:   }
-    295:   return css\`
-    296:     color: \${color};
-                      ^
-    297:   \`;
-    298: }",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 296,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 5043,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "301:   size++;
-    302:   return css\`
-    303:     font-size: \${size}px;
-                          ^
-    304:   \`;
-    305: }",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 17,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 303,
-        },
-        "message": "skipped CSS extraction — could not resolve "size" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 5146,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "324:   return {
-    325:     color: css\`
-    326:       color: \${color};
-                        ^
-    327:     \`,
-    328:     size: css\`",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 15,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 326,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 5620,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "327:     \`,
-    328:     size: css\`
-    329:       font-size: \${size};
-                            ^
-    330:     \`,
-    331:     weight: css\`",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 19,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 329,
-        },
-        "message": "skipped CSS extraction — could not resolve "size" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 5667,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "330:     \`,
-    331:     weight: css\`
-    332:       font-weight: \${weight};
-                              ^
-    333:     \`,
-    334:     family: css\`",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 21,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 332,
-        },
-        "message": "skipped CSS extraction — could not resolve "weight" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 5717,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "333:     \`,
-    334:     family: css\`
-    335:       font-family: \${family};
-                              ^
-    336:     \`
-    337:   };",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 21,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 335,
-        },
-        "message": "skipped CSS extraction — could not resolve "family" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 5769,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "344:   }
-    345:   return css\`
-    346:     color: \${color};
-                      ^
-    347:   \`;
-    348: }",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 346,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 5928,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "360:   }
-    361:   return css\`
-    362:     color: \${color};
-                      ^
-    363:   \`;
-    364: }",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 362,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 6231,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "370:   }
-    371:   return css\`
-    372:     color: \${color};
-                      ^
-    373:   \`;
-    374: }",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 372,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 6441,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "383:   }
-    384:   return css\`
-    385:     color: \${color};
-                      ^
-    386:   \`;
-    387: }",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 385,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 6668,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "394: export function paramWrittenByBodyVar(color) {
-    395:   const before = css\`
-    396:     color: \${color};
-                      ^
-    397:   \`;
-    398:   var color = "blue";",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 396,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 6898,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "401: export function varUsedBeforeDeclaration() {
-    402:   const early = css\`
-    403:     color: \${tone};
-                      ^
-    404:   \`;
-    405:   var tone = "peru";",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 403,
-        },
-        "message": "skipped CSS extraction — could not resolve "tone" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 7037,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "411:   }
-    412:   return css\`
-    413:     color: \${color};
-                      ^
-    414:   \`;
-    415: }",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 413,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 7197,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "419:   } catch {}
-    420:   return css\`
-    421:     color: \${color};
-                      ^
-    422:   \`;
-    423: }",
-        "hook": "transform",
-        "id": "test/fixtures/scoping-advanced.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/scoping-advanced.input.ts",
-          "line": 421,
-        },
-        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 7306,
+        "pos": 4202,
       },
     ]
   `);
@@ -2326,51 +1963,6 @@ test('explicit exports with non-static values shadow `export *` sources', async 
   `);
 });
 
-test('reassigned exported bindings are not resolved', async () => {
-  const fixturePath = './test/fixtures/mutable-export.input.ts';
-  const result = await buildWithPlugin(fixturePath);
-
-  // `theme` is written to by `toggleTheme()`, so its exported value is not
-  // static and the consumer must not inline the initializer
-  expect(result.js).toMatchInlineSnapshot(`
-    "//#region index.js
-    function css() {
-    	throw new Error("css\`\` should have been transformed by the ecij plugin");
-    }
-    //#endregion
-    //#region test/fixtures/mutable-export.input.ts
-    var usesMutableExport = css\`
-      color: \${"light"};
-    \`;
-    //#endregion
-    export { usesMutableExport };"
-  `);
-  expect(result.css).toBeUndefined();
-  expect(result.logs).toMatchInlineSnapshot(`
-    [
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "2: import { theme } from "./mutable-export";
-    3: export const usesMutableExport = css\`
-    4:   color: \${theme};
-                  ^
-    5: \`;",
-        "hook": "transform",
-        "id": "test/fixtures/mutable-export.input.ts",
-        "loc": {
-          "column": 11,
-          "file": "test/fixtures/mutable-export.input.ts",
-          "line": 4,
-        },
-        "message": "skipped CSS extraction — could not resolve "theme" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 119,
-      },
-    ]
-  `);
-});
-
 test('import/export hardening: default passthrough, chained namespaces, static default exports', async () => {
   const fixturePath = './test/fixtures/import-export-hardening.input.ts';
   const result = await buildWithPlugin(fixturePath);
@@ -2620,13 +2212,12 @@ test('class names from skipped extractions do not leak to consumers', async () =
   `);
 });
 
-test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assignment targets, enums, namespaces and JSX module types', async () => {
+test('raw TypeScript (plain rolldown): type-only imports/exports, enums, namespaces and JSX module types', async () => {
   // Unlike the Vite pipeline (which strips TypeScript before plugin
   // transforms run), plain rolldown hands raw TypeScript to the plugin — this
   // exercises the plugin's own `isType` handling for `import type`,
   // `import { type x }`, `export type { x } from`, `export { type x } from`
-  // and `export type * from`, as well as type-asserted assignment targets
-  // (`(x as T) = …`).
+  // and `export type * from`.
   const logs: RolldownLog[] = [];
   // Plain rolldown does not bundle CSS itself — collect the virtual CSS
   // modules the plugin emits instead.
@@ -2682,11 +2273,6 @@ test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assig
       //#endregion
       //#region test/fixtures/typed.input.ts
       const usesTypedTone = "css-ad8768ea";
-      let asserted = "olive";
-      asserted = "lime";
-      const usesAssertedTarget = css\`
-        color: \${asserted};
-      \`;
       function enumShadow() {
       	return css\`
           color: \${/* @__PURE__ */ function(toneAnnotation) {
@@ -2700,8 +2286,8 @@ test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assig
       	_Local.spec = "wrong";
       })(Local || (Local = {}));
       console.log(Local.spec);
-      const usesSpecAfterNamespace = "css-7a1aa46f";
-      const usesJsxClass = "css-9ce74f5c";
+      const usesSpecAfterNamespace = "css-ad54cf23";
+      const usesJsxClass = "css-e26ce44d";
       let Aliased;
       (function(_Aliased) {
       	_Aliased.usesAlias = css\`
@@ -2710,7 +2296,7 @@ test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assig
       })(Aliased || (Aliased = {}));
       console.log(Aliased.usesAlias);
       //#endregion
-      export { enumShadow, usesAssertedTarget, usesJsxClass, usesSpecAfterNamespace, usesTypedTone };"
+      export { enumShadow, usesJsxClass, usesSpecAfterNamespace, usesTypedTone };"
     `);
     expect(cssModules).toMatchInlineSnapshot(`
       Map {
@@ -2718,7 +2304,7 @@ test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assig
         /* jsx */
         color: rebeccapurple;
       }",
-        "test/fixtures/typed.input.ts.1c46ab68.css" => ".css-ad8768ea {
+        "test/fixtures/typed.input.ts.32b297d6.css" => ".css-ad8768ea {
         /* uses typed-tone */
         color: salmon;
         outline-color: plum;
@@ -2726,11 +2312,11 @@ test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assig
         border-color: navy;
       }
 
-      .css-7a1aa46f {
+      .css-ad54cf23 {
         width: 12px;
       }
 
-      .css-9ce74f5c {
+      .css-e26ce44d {
         &.css-83fb8267 {
           color: red;
         }
@@ -2741,62 +2327,43 @@ test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assig
       [
         {
           "code": "PLUGIN_WARNING",
-          "frame": "31: 
-      32: export const usesAssertedTarget = css\`
-      33:   color: \${asserted};
-                     ^
-      34: \`;",
-          "hook": "transform",
-          "id": "test/fixtures/typed.input.ts",
-          "loc": {
-            "column": 11,
-            "file": "test/fixtures/typed.input.ts",
-            "line": 33,
-          },
-          "message": "skipped CSS extraction — could not resolve "asserted" to a static string or number",
-          "plugin": "ecij",
-          "pluginCode": "UNRESOLVED_INTERPOLATION",
-          "pos": 1131,
-        },
-        {
-          "code": "PLUGIN_WARNING",
-          "frame": "41:   }
-      42:   return css\`
-      43:     color: \${toneAnnotation as unknown as string};
+          "frame": "31:   }
+      32:   return css\`
+      33:     color: \${toneAnnotation as unknown as string};
                        ^
-      44:   \`;
-      45: }",
+      34:   \`;
+      35: }",
           "hook": "transform",
           "id": "test/fixtures/typed.input.ts",
           "loc": {
             "column": 13,
             "file": "test/fixtures/typed.input.ts",
-            "line": 43,
+            "line": 33,
           },
           "message": "skipped CSS extraction — could not resolve "toneAnnotation" to a static string or number",
           "plugin": "ecij",
           "pluginCode": "UNRESOLVED_INTERPOLATION",
-          "pos": 1396,
+          "pos": 1087,
         },
         {
           "code": "PLUGIN_WARNING",
-          "frame": "66:   import spec = Local.spec;
-      67:   export const usesAlias = css\`
-      68:     width: \${spec};
+          "frame": "56:   import spec = Local.spec;
+      57:   export const usesAlias = css\`
+      58:     width: \${spec};
                        ^
-      69:   \`;
-      70: }",
+      59:   \`;
+      60: }",
           "hook": "transform",
           "id": "test/fixtures/typed.input.ts",
           "loc": {
             "column": 13,
             "file": "test/fixtures/typed.input.ts",
-            "line": 68,
+            "line": 58,
           },
           "message": "skipped CSS extraction — could not resolve "spec" to a static string or number",
           "plugin": "ecij",
           "pluginCode": "UNRESOLVED_INTERPOLATION",
-          "pos": 1958,
+          "pos": 1649,
         },
       ]
     `);
