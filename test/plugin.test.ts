@@ -649,7 +649,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       \`;
     }
     function forStatementShadow() {
-    	for (let color = "blue"; color !== "done"; color = "done") console.log("css-c7155baa");
+    	for (let i = 0; i < 1; i++) console.log("css-c7155baa");
     	return "css-f19ded5e";
     }
     var MyClass = class MyClass {
@@ -786,9 +786,43 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     	console.log(hasNested);
     	return "css-ecc4dd17";
     }
-    var finalModuleCheck = "css-b7d6e8b6";
+    function reassignedLet() {
+    	let color = "blue";
+    	color = "green";
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function reassignedFromNestedFunction() {
+    	let color = "blue";
+    	const darken = () => {
+    		color = "navy";
+    	};
+    	darken();
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function forOfAssignmentTarget() {
+    	let color = "blue";
+    	for (color of ["green", "purple"]) console.log(color);
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function updatedNumber() {
+    	let size = 1;
+    	size++;
+    	return css\`
+        font-size: \${size}px;
+      \`;
+    }
+    function stableLet() {
+    	return "css-6d885ac7";
+    }
+    var finalModuleCheck = "css-321fb2fe";
     //#endregion
-    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, switchScope, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfAssignmentTarget, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, reassignedFromNestedFunction, reassignedLet, restParamShadow, stableLet, switchScope, updatedNumber, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -867,7 +901,11 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: blue;
     }
 
-    .css-b7d6e8b6 {
+    .css-6d885ac7 {
+      color: blue;
+    }
+
+    .css-321fb2fe {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"
@@ -1072,7 +1110,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1619,
+        "pos": 1604,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1092,7 +1130,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1712,
+        "pos": 1697,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1112,7 +1150,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1918,
+        "pos": 1903,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1132,7 +1170,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 2016,
+        "pos": 2001,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1152,7 +1190,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 2226,
+        "pos": 2211,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1172,7 +1210,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 2345,
+        "pos": 2330,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1192,7 +1230,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 2472,
+        "pos": 2457,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1212,7 +1250,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 2607,
+        "pos": 2592,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1232,7 +1270,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 2904,
+        "pos": 2889,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1252,7 +1290,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 2951,
+        "pos": 2936,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1272,7 +1310,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 3065,
+        "pos": 3050,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1292,7 +1330,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 3112,
+        "pos": 3097,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1312,7 +1350,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 3231,
+        "pos": 3216,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1332,7 +1370,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 3356,
+        "pos": 3341,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1352,7 +1390,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 3441,
+        "pos": 3426,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1372,7 +1410,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 3812,
+        "pos": 3797,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1392,7 +1430,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 3915,
+        "pos": 3900,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1412,7 +1450,87 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 4365,
+        "pos": 4350,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "275:   color = "green";
+    276:   return css\`
+    277:     color: \${color};
+                      ^
+    278:   \`;
+    279: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 277,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 4708,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "285:   darken();
+    286:   return css\`
+    287:     color: \${color};
+                      ^
+    288:   \`;
+    289: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 287,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 4876,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "294:   }
+    295:   return css\`
+    296:     color: \${color};
+                      ^
+    297:   \`;
+    298: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 296,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 5043,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "301:   size++;
+    302:   return css\`
+    303:     font-size: \${size}px;
+                          ^
+    304:   \`;
+    305: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 17,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 303,
+        },
+        "message": "skipped CSS extraction — could not resolve "size" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 5146,
       },
     ]
   `);
@@ -1828,6 +1946,51 @@ test('explicit exports with non-static values shadow `export *` sources', async 
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 145,
+      },
+    ]
+  `);
+});
+
+test('reassigned exported bindings are not resolved', async () => {
+  const fixturePath = './test/fixtures/mutable-export.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // `theme` is written to by `toggleTheme()`, so its exported value is not
+  // static and the consumer must not inline the initializer
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/mutable-export.input.ts
+    var usesMutableExport = css\`
+      color: \${"light"};
+    \`;
+    //#endregion
+    export { usesMutableExport };"
+  `);
+  expect(result.css).toBeUndefined();
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "2: import { theme } from "./mutable-export";
+    3: export const usesMutableExport = css\`
+    4:   color: \${theme};
+                  ^
+    5: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/mutable-export.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/mutable-export.input.ts",
+          "line": 4,
+        },
+        "message": "skipped CSS extraction — could not resolve "theme" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 119,
       },
     ]
   `);

@@ -3,6 +3,7 @@ import { relative } from 'node:path';
 import { cwd } from 'node:process';
 
 import type {
+  AssignmentTargetMaybeDefault,
   BindingPattern,
   BlockStatement,
   Expression,
@@ -123,7 +124,8 @@ function unwrapExpression(expression: Expression): Expression {
     expression.type === 'ParenthesizedExpression' ||
     expression.type === 'TSAsExpression' ||
     expression.type === 'TSSatisfiesExpression' ||
-    expression.type === 'TSNonNullExpression'
+    expression.type === 'TSNonNullExpression' ||
+    expression.type === 'TSTypeAssertion'
   ) {
     expression = expression.expression;
   }
@@ -180,6 +182,48 @@ function flattenMemberExpressionPath(expression: Expression): string[] | undefin
 
   names.unshift(current.name);
   return names;
+}
+
+// Calls `callback` with every binding an assignment target writes to:
+// `x = …`, `x++`, `[x, ...rest] = …`, `({ a: x = 1 } = …)`. Member expressions
+// do not rebind anything and are ignored.
+function forEachAssignedName(
+  target: AssignmentTargetMaybeDefault,
+  callback: (name: string) => void,
+): void {
+  switch (target.type) {
+    case 'Identifier':
+      callback(target.name);
+      break;
+    case 'ArrayPattern':
+      for (const element of target.elements) {
+        if (element === null) continue;
+        forEachAssignedName(element.type === 'RestElement' ? element.argument : element, callback);
+      }
+      break;
+    case 'ObjectPattern':
+      for (const property of target.properties) {
+        forEachAssignedName(
+          property.type === 'RestElement' ? property.argument : property.value,
+          callback,
+        );
+      }
+      break;
+    case 'AssignmentPattern':
+      forEachAssignedName(target.left, callback);
+      break;
+    case 'TSAsExpression':
+    case 'TSSatisfiesExpression':
+    case 'TSNonNullExpression':
+    case 'TSTypeAssertion': {
+      // `(x as T) = …`
+      const expression = unwrapExpression(target.expression);
+      if (expression.type === 'Identifier') {
+        callback(expression.name);
+      }
+      break;
+    }
+  }
 }
 
 // True if `name` is bound anywhere along the scope chain (i.e. shadows imports).
@@ -294,6 +338,15 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // initializer can itself contain declarations (e.g. a function body), so a
     // single slot would be clobbered before the next declarator is visited.
     const variableDeclarationKinds: string[] = [];
+    // Bindings written to after their declaration (`x = …`, `x++`,
+    // `for (x of …)`), with the scope the write appears in. A reassigned
+    // binding has no static value; applied once the visit completes so writes
+    // preceding a hoisted declaration are covered too.
+    const reassignments: Array<{ name: string; scope: Scope }> = [];
+
+    function recordReassignment(name: string) {
+      reassignments.push({ name, scope: currentScope });
+    }
 
     const parsedInfo: ParsedFileInfo = {
       declarations,
@@ -655,6 +708,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
       ForInStatement(node) {
         pushScope();
+        if (node.left.type !== 'VariableDeclaration') {
+          forEachAssignedName(node.left, recordReassignment);
+        }
         if (node.body.type === 'BlockStatement') {
           skippedBlockStatements.add(node.body);
         }
@@ -663,6 +719,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
       ForOfStatement(node) {
         pushScope();
+        if (node.left.type !== 'VariableDeclaration') {
+          forEachAssignedName(node.left, recordReassignment);
+        }
         if (node.body.type === 'BlockStatement') {
           skippedBlockStatements.add(node.body);
         }
@@ -708,6 +767,14 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         pushScope(true);
       },
       'StaticBlock:exit': popScope,
+
+      AssignmentExpression(node) {
+        forEachAssignedName(node.left, recordReassignment);
+      },
+
+      UpdateExpression(node) {
+        forEachAssignedName(node.argument, recordReassignment);
+      },
 
       VariableDeclaration(node) {
         variableDeclarationKinds.push(node.kind);
@@ -791,6 +858,21 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // Every scope is populated now, so tag shadowing can be decided
     for (const candidate of cssTagCandidates) {
       extractCssTagCandidate(candidate);
+    }
+
+    // A reassigned binding has no static value wherever it was declared, and
+    // neither do its exports.
+    for (const { name, scope } of reassignments) {
+      for (let current: Scope | null = scope; current !== null; current = current.parent) {
+        if (!current.identifiers.has(name)) continue;
+        current.identifiers.set(name, undefined);
+        if (current === rootScope) {
+          for (const exportedName of localNameToExportedNamesMap.get(name) ?? []) {
+            exportNameToValueMap.set(exportedName, { kind: 'unresolved', localName: name });
+          }
+        }
+        break;
+      }
     }
 
     // Explicit exports that never received a static value must still shadow

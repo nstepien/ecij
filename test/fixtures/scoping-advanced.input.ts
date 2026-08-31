@@ -130,8 +130,8 @@ export function defaultParam(color = 'blue') {
 // 11. For-statement init variable (classic for loop)
 // =============================================
 export function forStatementShadow() {
-  for (let color = 'blue'; color !== 'done'; color = 'done') {
-    // color has a known init value inside the for-scope
+  for (let color = 'blue', i = 0; i < 1; i++) {
+    // color has a known init value inside the for-scope and is never reassigned
     console.log(
       css`
         color: ${color};
@@ -461,7 +461,71 @@ export function varAfterNestedDeclaration() {
 }
 
 // =============================================
-// 35. Module-level check: everything should still resolve
+// 35. let reassigned after its literal initializer
+// =============================================
+export function reassignedLet() {
+  let color = 'blue';
+  color = 'green';
+  // color is reassigned → no static value → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 36. Binding reassigned from a nested function
+// =============================================
+export function reassignedFromNestedFunction() {
+  let color = 'blue';
+  const darken = () => {
+    color = 'navy';
+  };
+  darken();
+  // color may change at runtime → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 37. Existing binding used as a for-of target
+// =============================================
+export function forOfAssignmentTarget() {
+  let color = 'blue';
+  for (color of ['green', 'purple']) {
+    console.log(color);
+  }
+  // color is assigned by the loop → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 38. Update expression on a numeric binding
+// =============================================
+export function updatedNumber() {
+  let size = 1;
+  size++;
+  // size is updated → NOT extracted
+  return css`
+    font-size: ${size}px;
+  `;
+}
+
+// =============================================
+// 39. let with a literal initializer that is never reassigned
+// =============================================
+export function stableLet() {
+  let color = 'blue';
+  // never reassigned → resolves like a const
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 40. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};

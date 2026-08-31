@@ -138,8 +138,9 @@ ecij({
 Interpolations are resolved at build time when they are:
 
 - string or number literals, including signed numbers (`${'red'}`, `${16}`, `${-5}`);
-- identifiers bound to such literals or to other `css` class names, following
-  lexical scoping (a local binding shadows outer bindings and imports);
+- identifiers bound to such literals or to other `css` class names and never
+  reassigned, following lexical scoping (a local binding shadows outer bindings
+  and imports);
 - imports of such values from other modules — named, default and namespace
   imports (`${tokens.color}`) — through any depth of re-exports (`export { x } from`,
   `export * from`, `export * as ns from`) and barrel files, with ESM semantics:
