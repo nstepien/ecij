@@ -2,14 +2,15 @@
 // test tsconfig does not load.
 import { css } from 'ecij';
 
-// The query selects a different module (the file's source text, an asset URL)
-// whose value cannot be read from the file itself: it must not be resolved as
-// if it were the plain module's default export.
+// A query denotes a different module than the file: `?raw` is the file's text
+// and `?url` its asset URL. Both are static strings resolved from that module's
+// own default export.
 import tokenSource from './export-default-literal.ts?raw';
 import tokenUrl from './export-default-literal.ts?url';
 
 export const usesRawImport = css`
-  content: '${tokenSource}';
+  /* ${tokenSource} */
+  color: royalblue;
 `;
 
 export const usesUrlImport = css`

@@ -664,7 +664,47 @@ export function paramWrittenByBodyVar(color: string) {
 }
 
 // =============================================
-// 49. Module-level check: everything should still resolve
+// 49. var used before its declaration
+// =============================================
+export function varUsedBeforeDeclaration() {
+  const early = css`
+    color: ${tone!};
+  `;
+  var tone = 'peru';
+  // tone is still `undefined` where the template runs → NOT extracted
+  return [early, tone];
+}
+
+// =============================================
+// 50. var initialized conditionally
+// =============================================
+export function conditionalVar(flag: boolean) {
+  if (flag) {
+    var color = 'blue';
+  }
+  // color may still be `undefined` → NOT extracted
+  return css`
+    color: ${color!};
+  `;
+}
+
+// =============================================
+// 51. var initialized inside a try block
+// =============================================
+export function tryVar() {
+  try {
+    var color = 'blue';
+  } catch {
+    // ignore
+  }
+  // the initializer may not have run → NOT extracted
+  return css`
+    color: ${color!};
+  `;
+}
+
+// =============================================
+// 52. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};

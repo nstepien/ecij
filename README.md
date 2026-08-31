@@ -140,13 +140,16 @@ Interpolations are resolved at build time when they are:
 - string or number literals, including signed numbers (`${'red'}`, `${16}`, `${-5}`);
 - identifiers bound to such literals or to other `css` class names and never
   reassigned, following lexical scoping (a local binding shadows outer bindings
-  and imports);
+  and imports). Resolution is static, so a template may reference a `const` or a
+  class declared later in the file; a `var` is only used by templates placed
+  after its unconditional declaration, since it is `undefined` before it runs;
 - imports of such values from other modules — named, default and namespace
   imports (`${tokens.color}`) — through any depth of re-exports (`export { x } from`,
   `export * from`, `export * as ns from`) and barrel files, with ESM semantics:
   explicit exports win over `export *`, a name provided by several `export *`
   sources is ambiguous and not resolved, `export *` never forwards `default`, and
-  type-only imports/exports are ignored.
+  type-only imports/exports are ignored. A query suffix denotes a separate
+  module resolved on its own: `?raw` yields the file's text, `?url` its asset URL.
 
 Any other interpolation — calls, ternaries, template literals, identifiers whose
 value is not statically known (function parameters, loop variables, ...) — causes
@@ -163,8 +166,6 @@ mistake fails loudly instead of silently shipping broken styles.
   the templates untransformed.
 - Interpolations must statically resolve to strings or numbers, see
   [Static resolution](#static-resolution).
-- Values imported with a query suffix (`?raw`, `?url`, `?worker`, …) are not
-  resolved: the query selects a different module than the file on disk.
 - Circular imports are supported, but inside a cycle a module can only inline
   the other module's class names whose declarations were already extracted when
   the cycle was entered — declare such classes before the templates that

@@ -890,9 +890,30 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     	var color = "blue";
     	return [before, color];
     }
-    var finalModuleCheck = "css-1aec5fd9";
+    function varUsedBeforeDeclaration() {
+    	const early = css\`
+        color: \${tone};
+      \`;
+    	var tone = "peru";
+    	return [early, tone];
+    }
+    function conditionalVar(flag) {
+    	if (flag) var color = "blue";
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function tryVar() {
+    	try {
+    		var color = "blue";
+    	} catch {}
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    var finalModuleCheck = "css-375fe53a";
     //#endregion
-    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, defaultParamScope, defaultParamVsBodyVar, destructuredParam, destructuringAssignmentTargets, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forInitWriteWithShadowingBody, forOfAssignmentTarget, forOfDestructuring, forOfShadow, forOfTargetWithShadowingBody, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, paramWrittenByBodyVar, reassignedFromNestedFunction, reassignedLet, restParamShadow, stableLet, switchDiscriminantWrite, switchScope, updatedNumber, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock, varRedeclaration };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, conditionalVar, defaultParam, defaultParamScope, defaultParamVsBodyVar, destructuredParam, destructuringAssignmentTargets, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forInitWriteWithShadowingBody, forOfAssignmentTarget, forOfDestructuring, forOfShadow, forOfTargetWithShadowingBody, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, paramWrittenByBodyVar, reassignedFromNestedFunction, reassignedLet, restParamShadow, stableLet, switchDiscriminantWrite, switchScope, tryVar, updatedNumber, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock, varRedeclaration, varUsedBeforeDeclaration };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -983,7 +1004,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: red;
     }
 
-    .css-1aec5fd9 {
+    .css-375fe53a {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"
@@ -1790,6 +1811,66 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 6898,
       },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "401: export function varUsedBeforeDeclaration() {
+    402:   const early = css\`
+    403:     color: \${tone};
+                      ^
+    404:   \`;
+    405:   var tone = "peru";",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 403,
+        },
+        "message": "skipped CSS extraction — could not resolve "tone" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 7037,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "411:   }
+    412:   return css\`
+    413:     color: \${color};
+                      ^
+    414:   \`;
+    415: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 413,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 7197,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "419:   } catch {}
+    420:   return css\`
+    421:     color: \${color};
+                      ^
+    422:   \`;
+    423: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 421,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 7306,
+      },
     ]
   `);
 });
@@ -2163,79 +2244,33 @@ test('external modules in `export *` chains are skipped gracefully', async () =>
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
-test('query-suffixed imports (`?raw`, `?url`) are not resolved from the file', async () => {
+test('query-suffixed imports (`?raw`, `?url`) resolve from the variant module', async () => {
   const fixturePath = './test/fixtures/query-import.input.ts';
   const result = await buildWithPlugin(fixturePath);
 
   // The resolved ids carry a query, so they denote a different module than the
-  // file on disk: both templates must be skipped instead of inlining the file's
-  // default export
+  // file on disk — its text for `?raw`, its (inlined) asset URL for `?url` —
+  // whose default export is what the interpolations evaluate to at runtime
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region index.js
-    function css() {
-    	throw new Error("css\`\` should have been transformed by the ecij plugin");
-    }
-    //#endregion
-    //#region test/fixtures/export-default-literal.ts?raw
-    var export_default_literal_default$1 = "// Default-exported string literal\\nexport default 'royalblue';\\n";
-    //#endregion
-    //#region test/fixtures/export-default-literal.ts?url
-    var export_default_literal_default = "data:video/mp2t;base64,Ly8gRGVmYXVsdC1leHBvcnRlZCBzdHJpbmcgbGl0ZXJhbApleHBvcnQgZGVmYXVsdCAncm95YWxibHVlJzsK";
-    //#endregion
-    //#region test/fixtures/query-import.input.ts
-    var usesRawImport = css\`
-      content: '\${export_default_literal_default$1}';
-    \`;
-    var usesUrlImport = css\`
-      background: url(\${export_default_literal_default});
-    \`;
+    "//#region test/fixtures/query-import.input.ts
+    var usesRawImport = "css-18c94c3e";
+    var usesUrlImport = "css-6c6a73b3";
     //#endregion
     export { usesRawImport, usesUrlImport };"
   `);
-  expect(result.css).toBeUndefined();
-  expect(result.logs).toMatchInlineSnapshot(`
-    [
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "3: import tokenUrl from "./export-default-literal.ts?url";
-    4: export const usesRawImport = css\`
-    5:   content: '\${tokenSource}';
-                     ^
-    6: \`;
-    7: export const usesUrlImport = css\`",
-        "hook": "transform",
-        "id": "test/fixtures/query-import.input.ts",
-        "loc": {
-          "column": 14,
-          "file": "test/fixtures/query-import.input.ts",
-          "line": 5,
-        },
-        "message": "skipped CSS extraction — could not resolve "tokenSource" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 191,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "6: \`;
-    7: export const usesUrlImport = css\`
-    8:   background: url(\${tokenUrl});
-                           ^
-    9: \`;",
-        "hook": "transform",
-        "id": "test/fixtures/query-import.input.ts",
-        "loc": {
-          "column": 20,
-          "file": "test/fixtures/query-import.input.ts",
-          "line": 8,
-        },
-        "message": "skipped CSS extraction — could not resolve "tokenUrl" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 263,
-      },
-    ]
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-18c94c3e {
+      /* // Default-exported string literal
+    export default 'royalblue';
+     */
+      color: royalblue;
+    }
+
+    .css-6c6a73b3 {
+      background: url(data:video/mp2t;base64,Ly8gRGVmYXVsdC1leHBvcnRlZCBzdHJpbmcgbGl0ZXJhbApleHBvcnQgZGVmYXVsdCAncm95YWxibHVlJzsK);
+    }/*$vite$:1*/"
   `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
 test('explicit exports with non-static values shadow `export *` sources', async () => {
@@ -2667,6 +2702,13 @@ test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assig
       console.log(Local.spec);
       const usesSpecAfterNamespace = "css-7a1aa46f";
       const usesJsxClass = "css-9ce74f5c";
+      let Aliased;
+      (function(_Aliased) {
+      	_Aliased.usesAlias = css\`
+          width: \${Local.spec};
+        \`;
+      })(Aliased || (Aliased = {}));
+      console.log(Aliased.usesAlias);
       //#endregion
       export { enumShadow, usesAssertedTarget, usesJsxClass, usesSpecAfterNamespace, usesTypedTone };"
     `);
@@ -2735,6 +2777,26 @@ test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assig
           "plugin": "ecij",
           "pluginCode": "UNRESOLVED_INTERPOLATION",
           "pos": 1396,
+        },
+        {
+          "code": "PLUGIN_WARNING",
+          "frame": "66:   import spec = Local.spec;
+      67:   export const usesAlias = css\`
+      68:     width: \${spec};
+                       ^
+      69:   \`;
+      70: }",
+          "hook": "transform",
+          "id": "test/fixtures/typed.input.ts",
+          "loc": {
+            "column": 13,
+            "file": "test/fixtures/typed.input.ts",
+            "line": 68,
+          },
+          "message": "skipped CSS extraction — could not resolve "spec" to a static string or number",
+          "plugin": "ecij",
+          "pluginCode": "UNRESOLVED_INTERPOLATION",
+          "pos": 1958,
         },
       ]
     `);
@@ -3086,6 +3148,47 @@ test('modules whose exports were all inlined keep their stylesheet imports', asy
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
+test('inline module scripts of an HTML entry are transformed', async () => {
+  // Vite serves an inline `<script type="module">` as
+  // `index.html?html-proxy&index=0.js`: a source module whose id carries a
+  // query, which must not be mistaken for a `?raw`-style variant
+  const logs: RolldownLog[] = [];
+  const output = await build({
+    configFile: false,
+    root: './test/fixtures/html-entry',
+    logLevel: 'warn',
+    build: {
+      write: false,
+      minify: false,
+      rolldownOptions: {
+        onLog(level, log, handler) {
+          if (log.plugin === 'ecij') {
+            logs.push(log);
+          } else {
+            handler(level, log);
+          }
+        },
+      },
+    },
+    plugins: [ecij()],
+  });
+
+  // An HTML build has a single output (lib mode yields one per format)
+  if (Array.isArray(output) || !('output' in output)) {
+    throw new Error('Expected a single build output');
+  }
+
+  const chunks = output.output;
+  const js = chunks.find((chunk) => chunk.type === 'chunk')?.code ?? '';
+  const css = chunks.find(
+    (chunk): chunk is OutputAsset => chunk.type === 'asset' && chunk.fileName.endsWith('.css'),
+  )?.source;
+
+  expect(js).toMatch(/document\.body\.className = "css-[0-9a-f]{8}"/);
+  expect(String(css)).toContain('color: red');
+  expect(logs).toStrictEqual([]);
 });
 
 test('injected imports follow the hashbang and directive prologue', async () => {

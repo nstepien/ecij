@@ -59,3 +59,13 @@ export const usesJsxClass = css`
     color: red;
   }
 `;
+
+// `import x = …` binds like a declaration: inside `Aliased`, `spec` is the
+// namespace member, not the module-level constant.
+namespace Aliased {
+  import spec = Local.spec;
+  export const usesAlias = css`
+    width: ${spec};
+  `;
+}
+console.log(Aliased.usesAlias);
