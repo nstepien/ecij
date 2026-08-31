@@ -2294,12 +2294,13 @@ test('class names from skipped extractions do not leak to consumers', async () =
   `);
 });
 
-test('type-only imports/exports are ignored (plain rolldown, raw TypeScript)', async () => {
+test('raw TypeScript (plain rolldown): type-only imports/exports are ignored, asserted assignment targets are tracked', async () => {
   // Unlike the Vite pipeline (which strips TypeScript before plugin
   // transforms run), plain rolldown hands raw TypeScript to the plugin — this
   // exercises the plugin's own `isType` handling for `import type`,
-  // `import { type x }`, `export type { x } from`, `export { type x } from`,
-  // and `export type * from`.
+  // `import { type x }`, `export type { x } from`, `export { type x } from`
+  // and `export type * from`, as well as type-asserted assignment targets
+  // (`(x as T) = …`).
   const logs: RolldownLog[] = [];
   // Plain rolldown does not bundle CSS itself — collect the virtual CSS
   // modules the plugin emits instead.
@@ -2344,10 +2345,20 @@ test('type-only imports/exports are ignored (plain rolldown, raw TypeScript)', a
     // type-only decoy re-exports ('WRONG-decoy-value'), and the type-only
     // star source must not make the name ambiguous.
     expect(jsChunk?.code.trim()).toMatchInlineSnapshot(`
-      "//#region test/fixtures/typed.input.ts
-      const usesTypedTone = "css-ad8768ea";
+      "//#region index.js
+      function css() {
+      	throw new Error("css\`\` should have been transformed by the ecij plugin");
+      }
       //#endregion
-      export { usesTypedTone };"
+      //#region test/fixtures/typed.input.ts
+      const usesTypedTone = "css-ad8768ea";
+      let asserted = "olive";
+      asserted = "lime";
+      const usesAssertedTarget = css\`
+        color: \${asserted};
+      \`;
+      //#endregion
+      export { usesAssertedTarget, usesTypedTone };"
     `);
     expect(cssModules).toMatchInlineSnapshot(`
       Map {
@@ -2360,7 +2371,29 @@ test('type-only imports/exports are ignored (plain rolldown, raw TypeScript)', a
       }",
       }
     `);
-    expect(logs).toMatchInlineSnapshot(`[]`);
+    expect(logs).toMatchInlineSnapshot(`
+      [
+        {
+          "code": "PLUGIN_WARNING",
+          "frame": "27: 
+      28: export const usesAssertedTarget = css\`
+      29:   color: \${asserted};
+                     ^
+      30: \`;",
+          "hook": "transform",
+          "id": "test/fixtures/typed.input.ts",
+          "loc": {
+            "column": 11,
+            "file": "test/fixtures/typed.input.ts",
+            "line": 29,
+          },
+          "message": "skipped CSS extraction — could not resolve "asserted" to a static string or number",
+          "plugin": "ecij",
+          "pluginCode": "UNRESOLVED_INTERPOLATION",
+          "pos": 905,
+        },
+      ]
+    `);
   } finally {
     await bundle.close();
   }

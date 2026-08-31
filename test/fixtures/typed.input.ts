@@ -18,3 +18,13 @@ export const usesTypedTone = css`
   width: ${spec};
   border-color: ${nsAnnotated};
 `;
+
+// A type-asserted assignment target only reaches the plugin as such here:
+// Vite strips the assertion before its transforms run. The binding is
+// reassigned, so it has no static value.
+let asserted = 'olive';
+(asserted as string) = 'lime';
+
+export const usesAssertedTarget = css`
+  color: ${asserted};
+`;
