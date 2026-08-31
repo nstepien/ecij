@@ -133,6 +133,27 @@ ecij({
 });
 ```
 
+## Static resolution
+
+Interpolations are resolved at build time when they are:
+
+- string or number literals, including signed numbers (`${'red'}`, `${16}`, `${-5}`);
+- `const` bindings of such literals or of other `css` class names, following
+  lexical scoping — any other binding (`let`, `var`, parameters, destructuring,
+  …) shadows outer ones and is never resolved. Resolution is static, so a
+  template may reference a `const` or a class declared later in the file;
+- named imports of such `const` bindings from other modules.
+
+Any other interpolation — calls, ternaries, template literals, identifiers whose
+value is not statically known (`let`/`var` bindings, parameters, ...) — causes
+the whole css`` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or
+`UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the
+mistake fails loudly instead of silently shipping broken styles.
+
+The `css` tag must be a named import from `'ecij'` (aliasing it is fine, e.g.
+`import { css as styled } from 'ecij'`). A local binding of the same name
+shadows it, so its templates are left alone.
+
 ## Development
 
 ### Building
