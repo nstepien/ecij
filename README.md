@@ -15,6 +15,8 @@ The plugin does not process the CSS in any way whatsoever, it is merely output i
 npm install -D ecij
 ```
 
+The plugin is built on Rolldown's APIs, so `rolldown` is a required peer dependency. In a Vite project it is already part of the dependency tree — npm and pnpm resolve the peer to that same copy — but package managers which do not install peer dependencies automatically (e.g. Yarn) require it to be installed explicitly.
+
 ## Usage
 
 Source input:
