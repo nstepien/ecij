@@ -133,13 +133,34 @@ ecij({
 });
 ```
 
+## Static resolution
+
+Interpolations are resolved at build time when they are:
+
+- string or number literals, including signed numbers (`${'red'}`, `${16}`, `${-5}`);
+- identifiers bound to such literals or to other `css` class names, following
+  lexical scoping (a local binding shadows outer bindings and imports);
+- imports of such values from other modules — named, default and namespace
+  imports (`${tokens.color}`) — through any depth of re-exports (`export { x } from`,
+  `export * from`, `export * as ns from`) and barrel files, with ESM semantics:
+  explicit exports win over `export *`, a name provided by several `export *`
+  sources is ambiguous and not resolved, `export *` never forwards `default`, and
+  type-only imports/exports are ignored.
+
+Any other interpolation — calls, ternaries, template literals, identifiers whose
+value is not statically known (function parameters, loop variables, ...) — causes
+the whole css`` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or
+`UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the
+mistake fails loudly instead of silently shipping broken styles.
+
 ## Limitations
 
-- The `css` tag must be imported directly from `'ecij'` (aliasing it is fine,
-  e.g. `import { css as styled } from 'ecij'`). Re-exporting the tag through
-  another module is not supported and leaves the templates untransformed.
-- Interpolations must statically resolve to strings or numbers; dynamic or
-  complex expressions cause the css`` block to be skipped with a warning.
+- The `css` tag must be a named import from `'ecij'` (aliasing it is fine,
+  e.g. `import { css as styled } from 'ecij'`). Accessing it through a namespace
+  import or re-exporting it through another module is not supported and leaves
+  the templates untransformed.
+- Interpolations must statically resolve to strings or numbers, see
+  [Static resolution](#static-resolution).
 
 ## Development
 

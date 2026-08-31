@@ -779,9 +779,16 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     		console.log(perIteration);
     	}
     }
-    var finalModuleCheck = "css-361b5f22";
+    function varAfterNestedDeclaration() {
+    	var hasNested = () => {
+    		return "unused";
+    	};
+    	console.log(hasNested);
+    	return "css-ecc4dd17";
+    }
+    var finalModuleCheck = "css-b7d6e8b6";
     //#endregion
-    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, switchScope, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, switchScope, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -856,7 +863,11 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         }
     }
 
-    .css-361b5f22 {
+    .css-ecc4dd17 {
+      color: blue;
+    }
+
+    .css-b7d6e8b6 {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"

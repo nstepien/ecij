@@ -290,7 +290,10 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // Scope tracking: root scope for module-level declarations
     const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
     let currentScope = rootScope;
-    let currentVariableDeclarationKind: string | undefined;
+    // Kinds of the `VariableDeclaration`s being visited, innermost last. An
+    // initializer can itself contain declarations (e.g. a function body), so a
+    // single slot would be clobbered before the next declarator is visited.
+    const variableDeclarationKinds: string[] = [];
 
     const parsedInfo: ParsedFileInfo = {
       declarations,
@@ -707,16 +710,16 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       'StaticBlock:exit': popScope,
 
       VariableDeclaration(node) {
-        currentVariableDeclarationKind = node.kind;
+        variableDeclarationKinds.push(node.kind);
       },
       'VariableDeclaration:exit'() {
-        currentVariableDeclarationKind = undefined;
+        variableDeclarationKinds.pop();
       },
 
       VariableDeclarator(node) {
         // `var` declarations are function-scoped; `let`/`const` are block-scoped
         const targetScope =
-          currentVariableDeclarationKind === 'var' ? findFunctionScope() : currentScope;
+          variableDeclarationKinds.at(-1) === 'var' ? findFunctionScope() : currentScope;
 
         if (node.id.type !== 'Identifier') {
           // Destructuring pattern: record all binding identifiers for shadowing
@@ -1393,8 +1396,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           // Otherwise, the original imports may be treated as being free of side-effects,
           // leading those imports to be omitted from the final bundle,
           // along with their extracted CSS.
-          for (const id of stylesheetDependencies) {
-            importStatements.push(`import ${JSON.stringify(id)};\n`);
+          for (const dependency of stylesheetDependencies) {
+            importStatements.push(`import ${JSON.stringify(dependency)};\n`);
           }
 
           // use JSON.stringify to properly escape the module ID,

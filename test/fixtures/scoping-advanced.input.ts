@@ -441,7 +441,27 @@ export function varDeclaredInLoop() {
 }
 
 // =============================================
-// 34. Module-level check: everything should still resolve
+// 34. var declarator after a sibling initializer with nested declarations
+// =============================================
+// The nested `let` inside the first declarator's initializer must not make the
+// second declarator block-scoped: `color` still hoists to the function scope.
+export function varAfterNestedDeclaration() {
+  {
+    var hasNested = () => {
+        let nested = 'unused';
+        return nested;
+      },
+      color = 'blue';
+    console.log(hasNested);
+  }
+  // → 'blue', not module-level 'red'
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 35. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
