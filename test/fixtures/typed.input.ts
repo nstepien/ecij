@@ -1,5 +1,9 @@
+// @ts-nocheck — enums and namespaces are not erasable syntax (tsconfig), and
+// the plugin must see them raw
 import { css } from 'ecij';
 
+// A `.js` module that Rolldown is told to treat as JSX (`moduleTypes`)
+import { jsxClass } from './jsx-tokens.js';
 // Inline type modifier mixed with a value import
 import { type LocalSpec, typedTone } from './typed-barrel';
 // Statement-level type-only import — erased
@@ -27,4 +31,31 @@ let asserted = 'olive';
 
 export const usesAssertedTarget = css`
   color: ${asserted};
+`;
+
+// TypeScript enums and namespaces only reach the plugin as such here (Vite
+// lowers them first). An enum shadows the outer binding of the same name…
+export function enumShadow() {
+  enum toneAnnotation {
+    A = 'x',
+  }
+  return css`
+    color: ${toneAnnotation as unknown as string};
+  `;
+}
+
+// …and a namespace's members are scoped to it: `spec` below is still '12px'.
+namespace Local {
+  export const spec = 'wrong';
+}
+console.log(Local.spec);
+
+export const usesSpecAfterNamespace = css`
+  width: ${spec};
+`;
+
+export const usesJsxClass = css`
+  &.${jsxClass} {
+    color: red;
+  }
 `;

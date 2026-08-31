@@ -151,7 +151,8 @@ Interpolations are resolved at build time when they are:
 Any other interpolation — calls, ternaries, template literals, identifiers whose
 value is not statically known (function parameters, loop variables, ...) — causes
 the whole css`` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or
-`UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the
+`UNRESOLVED_INTERPOLATION`; `UNREADABLE_MODULE` reports an imported module whose
+source could not be read, `UNPARSEABLE_MODULE` a module the plugin could not parse). The runtime `css` call is left in place, so the
 mistake fails loudly instead of silently shipping broken styles.
 
 ## Limitations
@@ -164,6 +165,13 @@ mistake fails loudly instead of silently shipping broken styles.
   [Static resolution](#static-resolution).
 - Values imported with a query suffix (`?raw`, `?url`, `?worker`, …) are not
   resolved: the query selects a different module than the file on disk.
+- Circular imports are supported, but inside a cycle a module can only inline
+  the other module's class names whose declarations were already extracted when
+  the cycle was entered — declare such classes before the templates that
+  reference the other module.
+- Resolving an import waits for the imported module's transform. A wait cycle
+  closed through another plugin's `this.load` cannot be detected and would hang
+  the build.
 
 ## Development
 

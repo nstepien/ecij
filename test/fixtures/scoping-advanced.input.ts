@@ -588,7 +588,83 @@ export function defaultParamScope(
 }
 
 // =============================================
-// 43. Module-level check: everything should still resolve
+// 43. for-of target written while the body shadows it
+// =============================================
+export function forOfTargetWithShadowingBody() {
+  let color = 'red';
+  for (color of ['blue']) {
+    // the body's own `color` must not swallow the head's write to the outer one
+    let color = 'ignored';
+    console.log(color);
+  }
+  // color is written by the loop → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 44. Write inside a for-init expression while the body shadows it
+// =============================================
+export function forInitWriteWithShadowingBody() {
+  let color = 'red';
+  for (let i = ((color = 'blue'), 0); i < 1; i++) {
+    let color = 'ignored';
+    console.log(color);
+  }
+  // color is written by the loop head → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 45. Write inside a switch discriminant with a case-level declaration
+// =============================================
+export function switchDiscriminantWrite() {
+  let color = 'red';
+  switch ((color = 'blue')) {
+    case 'blue':
+      let color = 'ignored';
+      console.log(color);
+      break;
+    default:
+      break;
+  }
+  // color is written by the discriminant → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 47. Parameter defaults cannot see the body's `var` declarations either
+// =============================================
+export function defaultParamVsBodyVar(
+  className = css`
+    color: ${color};
+  `,
+) {
+  var color = 'blue';
+  // with parameter expressions, body `var`s live in their own environment:
+  // the default sees the module-level 'red'
+  return [className, color];
+}
+
+// =============================================
+// 48. Body `var` named like a parameter writes to the parameter
+// =============================================
+export function paramWrittenByBodyVar(color: string) {
+  const before = css`
+    color: ${color};
+  `;
+  var color = 'blue';
+  // color is a parameter that the body reassigns → NOT extracted
+  return [before, color];
+}
+
+// =============================================
+// 49. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};

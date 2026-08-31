@@ -857,9 +857,42 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     function defaultParamScope(x = "css-2bf65539") {
     	return [x, "blue"];
     }
-    var finalModuleCheck = "css-be3c655f";
+    function forOfTargetWithShadowingBody() {
+    	let color = "red";
+    	for (color of ["blue"]) console.log("ignored");
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function forInitWriteWithShadowingBody() {
+    	let color = "red";
+    	for (let i = (color = "blue", 0); i < 1; i++) console.log("ignored");
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function switchDiscriminantWrite() {
+    	let color = "red";
+    	switch (color = "blue") {
+    		case "blue": console.log("ignored");
+    	}
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    function defaultParamVsBodyVar(className = "css-ad59794e") {
+    	return [className, "blue"];
+    }
+    function paramWrittenByBodyVar(color) {
+    	const before = css\`
+        color: \${color};
+      \`;
+    	var color = "blue";
+    	return [before, color];
+    }
+    var finalModuleCheck = "css-1aec5fd9";
     //#endregion
-    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, defaultParamScope, destructuredParam, destructuringAssignmentTargets, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfAssignmentTarget, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, reassignedFromNestedFunction, reassignedLet, restParamShadow, stableLet, switchScope, updatedNumber, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock, varRedeclaration };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, defaultParamScope, defaultParamVsBodyVar, destructuredParam, destructuringAssignmentTargets, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forInitWriteWithShadowingBody, forOfAssignmentTarget, forOfDestructuring, forOfShadow, forOfTargetWithShadowingBody, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, paramWrittenByBodyVar, reassignedFromNestedFunction, reassignedLet, restParamShadow, stableLet, switchDiscriminantWrite, switchScope, updatedNumber, varAfterNestedDeclaration, varDeclaredInBlock, varDeclaredInLoop, varForIn, varForOf, varInBlock, varRedeclaration };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -946,7 +979,11 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: red;
     }
 
-    .css-be3c655f {
+    .css-ad59794e {
+      color: red;
+    }
+
+    .css-1aec5fd9 {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"
@@ -1673,6 +1710,86 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 5928,
       },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "360:   }
+    361:   return css\`
+    362:     color: \${color};
+                      ^
+    363:   \`;
+    364: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 362,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 6231,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "370:   }
+    371:   return css\`
+    372:     color: \${color};
+                      ^
+    373:   \`;
+    374: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 372,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 6441,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "383:   }
+    384:   return css\`
+    385:     color: \${color};
+                      ^
+    386:   \`;
+    387: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 385,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 6668,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "394: export function paramWrittenByBodyVar(color) {
+    395:   const before = css\`
+    396:     color: \${color};
+                      ^
+    397:   \`;
+    398:   var color = "blue";",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 396,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 6898,
+      },
     ]
   `);
 });
@@ -2005,12 +2122,19 @@ test('self-referencing barrel resolves without deadlocking', async () => {
   // `tokenColor` must still resolve through the barrel's other star source.
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/self-barrel.input.ts
-    var selfBarrelClass = "css-a96da074";
+    var usesOwnClassViaBarrel = "css-9b19c72e";
+    var selfBarrelClass = "css-c56ec1a2";
     //#endregion
-    export { selfBarrelClass };"
+    export { selfBarrelClass, usesOwnClassViaBarrel };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
-    ".css-a96da074 {
+    ".css-9b19c72e {
+      &.css-c56ec1a2 {
+        color: red;
+      }
+    }
+
+    .css-c56ec1a2 {
       /* self-barrel */
       color: teal;
     }/*$vite$:1*/"
@@ -2225,15 +2349,28 @@ test('import/export hardening: default passthrough, chained namespaces, static d
   // - `export default -5` (signed number literal)
   // - `export default css\`...\` as string` (wrapped css tagged template)
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/import-export-hardening.input.ts
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    //#endregion
+    //#region test/fixtures/export-default-forward.ts
+    var export_default_forward_default = tone;
+    var tone = "peru";
+    //#endregion
+    //#region test/fixtures/import-export-hardening.input.ts
     var usesPassthroughDefault = "css-f8cd4db8";
     var usesChainedNamespace = "css-dc153ecc";
     var usesStarChainedNamespace = "css-d6528605";
     var usesNestedNamespaceMember = "css-e6f5d50f";
     var usesNegativeDefault = "css-8f4583c7";
     var usesWrappedDefaultCss = "css-12e33db5";
+    var usesForwardDefault = css\`
+      /* uses forward-default */
+      color: \${export_default_forward_default};
+    \`;
     //#endregion
-    export { usesChainedNamespace, usesNegativeDefault, usesNestedNamespaceMember, usesPassthroughDefault, usesStarChainedNamespace, usesWrappedDefaultCss };"
+    export { usesChainedNamespace, usesForwardDefault, usesNegativeDefault, usesNestedNamespaceMember, usesPassthroughDefault, usesStarChainedNamespace, usesWrappedDefaultCss };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-9cfab70f {
@@ -2279,7 +2416,29 @@ test('import/export hardening: default passthrough, chained namespaces, static d
       }
     }/*$vite$:1*/"
   `);
-  expect(result.logs).toMatchInlineSnapshot(`[]`);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "39: export const usesForwardDefault = css\`
+    40:   /* uses forward-default */
+    41:   color: \${forwardDefault};
+                   ^
+    42: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/import-export-hardening.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/import-export-hardening.input.ts",
+          "line": 41,
+        },
+        "message": "skipped CSS extraction — could not resolve "forwardDefault" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1265,
+      },
+    ]
+  `);
 });
 
 test('ambiguous `export *` names are not silently resolved', async () => {
@@ -2299,30 +2458,53 @@ test('ambiguous `export *` names are not silently resolved', async () => {
     var usesAmbiguous = css\`
       color: \${void 0};
     \`;
+    var usesNestedAmbiguous = css\`
+      color: \${void 0};
+    \`;
     //#endregion
-    export { usesAmbiguous };"
+    export { usesAmbiguous, usesNestedAmbiguous };"
   `);
   expect(result.css).toMatchInlineSnapshot(`undefined`);
   expect(result.logs).toMatchInlineSnapshot(`
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "2: import * as ambiguous from "./ambiguous-barrel";
-    3: export const usesAmbiguous = css\`
-    4:   color: \${ambiguous.accent};
+        "frame": "3: import * as outer from "./ambiguous-outer";
+    4: export const usesAmbiguous = css\`
+    5:   color: \${ambiguous.accent};
                   ^
-    5: \`;",
+    6: \`;
+    7: export const usesNestedAmbiguous = css\`",
         "hook": "transform",
         "id": "test/fixtures/ambiguous.input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/ambiguous.input.ts",
-          "line": 4,
+          "line": 5,
         },
         "message": "skipped CSS extraction — could not resolve "ambiguous.accent" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 122,
+        "pos": 166,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "6: \`;
+    7: export const usesNestedAmbiguous = css\`
+    8:   color: \${outer.accent};
+                  ^
+    9: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/ambiguous.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/ambiguous.input.ts",
+          "line": 8,
+        },
+        "message": "skipped CSS extraction — could not resolve "outer.accent" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 239,
       },
     ]
   `);
@@ -2403,7 +2585,7 @@ test('class names from skipped extractions do not leak to consumers', async () =
   `);
 });
 
-test('raw TypeScript (plain rolldown): type-only imports/exports are ignored, asserted assignment targets are tracked', async () => {
+test('raw TypeScript (plain rolldown): type-only imports/exports, asserted assignment targets, enums, namespaces and JSX module types', async () => {
   // Unlike the Vite pipeline (which strips TypeScript before plugin
   // transforms run), plain rolldown hands raw TypeScript to the plugin — this
   // exercises the plugin's own `isType` handling for `import type`,
@@ -2417,6 +2599,10 @@ test('raw TypeScript (plain rolldown): type-only imports/exports are ignored, as
 
   const bundle = await rolldown({
     input: './test/fixtures/typed.input.ts',
+    // `jsx-tokens.js` contains JSX: the plugin must parse it as told, instead of
+    // inferring plain JavaScript from the extension
+    moduleTypes: { '.js': 'jsx' },
+    transform: { jsx: 'react' },
     plugins: [
       ecij(),
       {
@@ -2466,17 +2652,46 @@ test('raw TypeScript (plain rolldown): type-only imports/exports are ignored, as
       const usesAssertedTarget = css\`
         color: \${asserted};
       \`;
+      function enumShadow() {
+      	return css\`
+          color: \${/* @__PURE__ */ function(toneAnnotation) {
+      		toneAnnotation["A"] = "x";
+      		return toneAnnotation;
+      	}({})};
+        \`;
+      }
+      let Local;
+      (function(_Local) {
+      	_Local.spec = "wrong";
+      })(Local || (Local = {}));
+      console.log(Local.spec);
+      const usesSpecAfterNamespace = "css-7a1aa46f";
+      const usesJsxClass = "css-9ce74f5c";
       //#endregion
-      export { usesAssertedTarget, usesTypedTone };"
+      export { enumShadow, usesAssertedTarget, usesJsxClass, usesSpecAfterNamespace, usesTypedTone };"
     `);
     expect(cssModules).toMatchInlineSnapshot(`
       Map {
-        "test/fixtures/typed.input.ts.90ad1b45.css" => ".css-ad8768ea {
+        "test/fixtures/jsx-tokens.js.2d7ad1d2.css" => ".css-83fb8267 {
+        /* jsx */
+        color: rebeccapurple;
+      }",
+        "test/fixtures/typed.input.ts.1c46ab68.css" => ".css-ad8768ea {
         /* uses typed-tone */
         color: salmon;
         outline-color: plum;
         width: 12px;
         border-color: navy;
+      }
+
+      .css-7a1aa46f {
+        width: 12px;
+      }
+
+      .css-9ce74f5c {
+        &.css-83fb8267 {
+          color: red;
+        }
       }",
       }
     `);
@@ -2484,22 +2699,42 @@ test('raw TypeScript (plain rolldown): type-only imports/exports are ignored, as
       [
         {
           "code": "PLUGIN_WARNING",
-          "frame": "27: 
-      28: export const usesAssertedTarget = css\`
-      29:   color: \${asserted};
+          "frame": "31: 
+      32: export const usesAssertedTarget = css\`
+      33:   color: \${asserted};
                      ^
-      30: \`;",
+      34: \`;",
           "hook": "transform",
           "id": "test/fixtures/typed.input.ts",
           "loc": {
             "column": 11,
             "file": "test/fixtures/typed.input.ts",
-            "line": 29,
+            "line": 33,
           },
           "message": "skipped CSS extraction — could not resolve "asserted" to a static string or number",
           "plugin": "ecij",
           "pluginCode": "UNRESOLVED_INTERPOLATION",
-          "pos": 905,
+          "pos": 1131,
+        },
+        {
+          "code": "PLUGIN_WARNING",
+          "frame": "41:   }
+      42:   return css\`
+      43:     color: \${toneAnnotation as unknown as string};
+                       ^
+      44:   \`;
+      45: }",
+          "hook": "transform",
+          "id": "test/fixtures/typed.input.ts",
+          "loc": {
+            "column": 13,
+            "file": "test/fixtures/typed.input.ts",
+            "line": 43,
+          },
+          "message": "skipped CSS extraction — could not resolve "toneAnnotation" to a static string or number",
+          "plugin": "ecij",
+          "pluginCode": "UNRESOLVED_INTERPOLATION",
+          "pos": 1396,
         },
       ]
     `);
@@ -2819,6 +3054,40 @@ test('skipped declarations do not register stylesheet dependencies', async () =>
   `);
 });
 
+test('modules whose exports were all inlined keep their stylesheet imports', async () => {
+  const fixturePath = './test/fixtures/chain.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  // This package declares `"sideEffects": false`, so chain-b — nothing of
+  // which is referenced once `bClass` is inlined — would be dropped together
+  // with its `import "chain-c….css"`, leaving chain-b's rule referencing a
+  // class without a rule. The transform marks such modules as having side
+  // effects, so all three rules are emitted.
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/chain.input.ts
+    var aClass = "css-e9efed0f";
+    //#endregion
+    export { aClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-505a4c7c {
+      /* chain-b */
+      &.css-e6be082a {
+        color: green;
+      }
+    }.css-e9efed0f {
+      /* chain-a */
+      &.css-505a4c7c {
+        color: red;
+      }
+    }.css-e6be082a {
+      /* chain-c */
+      color: teal;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
 test('injected imports follow the hashbang and directive prologue', async () => {
   const fixturePath = './test/fixtures/prologue.input.ts';
   const result = await buildWithPlugin(fixturePath);
@@ -2860,7 +3129,18 @@ test('vite dev: interpolations imported from other modules resolve', async () =>
     appType: 'custom',
     server: { middlewareMode: true, watch: null, hmr: false },
     optimizeDeps: { noDiscovery: true, include: [] },
-    plugins: [ecij()],
+    plugins: [
+      ecij(),
+      {
+        name: 'virtual-tokens',
+        resolveId(id) {
+          return id === 'virtual:tokens' ? '\0virtual:tokens' : null;
+        },
+        load(id) {
+          return id === '\0virtual:tokens' ? "export const vcolor = 'orchid';" : null;
+        },
+      },
+    ],
   });
 
   try {
@@ -2877,6 +3157,33 @@ test('vite dev: interpolations imported from other modules resolve', async () =>
     expect(secondImport).toMatch(
       /^import "\/test\/fixtures\/comprehensive\.input\.ts\.[0-9a-f]{8}\.css";$/,
     );
+    expect(warnings).toStrictEqual([]);
+
+    // A value from a `\0`-prefixed virtual module, which has no file to read:
+    // its code comes from the dev server's module graph
+    const virtualResult = await server.transformRequest('/test/fixtures/dev-virtual.input.ts');
+    const virtualCode = virtualResult?.code ?? '';
+    expect(virtualCode).not.toContain('css`');
+    expect(virtualCode).toMatch(/export const usesVirtualToken = 'css-[0-9a-f]{8}';/);
+    expect(warnings).toStrictEqual([]);
+
+    // A `?raw` request of a module (served as `export default "<source>"`)
+    // must not replace the module's cached parse info: a consumer transformed
+    // afterwards still inlines the real class, not the source text
+    await server.transformRequest('/test/fixtures/export-default-css.ts');
+    await server.transformRequest('/test/fixtures/export-default-css.ts?raw');
+    const clobberResult = await server.transformRequest(
+      '/test/fixtures/dev-query-clobber.input.ts',
+    );
+    const clobberCode = clobberResult?.code ?? '';
+    expect(clobberCode).toMatch(/export const usesDefaultAfterRaw = 'css-[0-9a-f]{8}';/);
+    const cssUrl = /^import "([^"]+dev-query-clobber\.input\.ts\.[0-9a-f]{8}\.css)";/m.exec(
+      clobberCode,
+    )?.[1];
+    assert(cssUrl !== undefined, 'Expected the consumer to import its stylesheet');
+    const clobberCss = (await server.transformRequest(cssUrl))?.code ?? '';
+    expect(clobberCss).toMatch(/&\.css-[0-9a-f]{8} \{/);
+    expect(clobberCss).not.toContain('export default');
     expect(warnings).toStrictEqual([]);
   } finally {
     await server.close();

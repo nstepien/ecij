@@ -2,6 +2,8 @@ import { css } from 'ecij';
 
 // Default import re-exported under its local name (`import d from 'mod'; export { d };`)
 import { passthroughDefault } from './default-passthrough';
+// Default export of a binding declared later: `undefined` when the statement runs
+import forwardDefault from './export-default-forward';
 // Default exports with static expressions the evaluator must unwrap
 import negativePad from './export-default-negative';
 import wrappedClass from './export-default-wrapped-css';
@@ -46,4 +48,9 @@ export const usesWrappedDefaultCss = css`
   &.${wrappedClass} {
     color: red;
   }
+`;
+
+export const usesForwardDefault = css`
+  /* uses forward-default */
+  color: ${forwardDefault};
 `;
