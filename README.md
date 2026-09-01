@@ -107,23 +107,26 @@ The `ecij()` plugin accepts an optional configuration object:
 ```ts
 export interface Configuration {
   /**
-   * Include patterns for files to process.
-   * Can be a string, RegExp, or array of strings/RegExp.
-   * @default /\.[cm]?[jt]sx?$/
+   * Include patterns for files to process, matched against the module id.
+   *
+   * @default `/\.[cm]?[jt]sx?$/`
    */
   include?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
-   * Exclude patterns for files to skip.
-   * Can be a string, RegExp, or array of strings/RegExp.
-   * @default [/\/node_modules\//, /\.d\.ts$/]
+   * Exclude patterns for files to skip, matched against the module id.
+   *
+   * @default `[/\/node_modules\//, /\.d\.ts$/]`
    */
   exclude?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
    * Prefix for generated CSS class names.
-   * Should not be empty, as generated hashes may start with a digit, resulting in invalid CSS class names.
-   * @default 'css-'
+   *
+   * Should not be empty, as generated hashes may start with a digit, resulting in invalid CSS
+   * class names.
+   *
+   * @default `'css-'`
    */
   classPrefix?: string | undefined | null;
 }
