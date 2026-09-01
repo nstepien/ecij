@@ -12,23 +12,15 @@
     "vite-plugin",
     "zero-runtime"
   ],
-  "homepage": "https://github.com/nstepien/ecij#readme",
-  "bugs": {
-    "url": "https://github.com/nstepien/ecij/issues"
-  },
   "license": "MIT",
   "author": "Nicolas Stepien",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/nstepien/ecij.git"
-  },
+  "repository": "github:nstepien/ecij",
   "files": [
     "dist",
     "index.d.ts"
   ],
   "type": "module",
   "sideEffects": false,
-  "main": "index.js",
   "exports": {
     ".": {
       "types": "./index.d.ts",
@@ -38,6 +30,9 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "provenance": true
   },
   "scripts": {
     "build": "rolldown -c",
