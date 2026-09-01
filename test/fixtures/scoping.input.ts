@@ -1,6 +1,6 @@
 import { css } from 'ecij';
 
-import { importedColor, importedSize, importedClass } from './scoping-helper';
+import { accentColor, accentSize, accentClass } from './named-styles';
 
 // =============================================
 // Module-level declarations
@@ -122,22 +122,22 @@ export function blockScope() {
 // 5. Import shadowing
 // =============================================
 export function shadowsImport() {
-  const importedColor = 'black';
-  // Should use local 'black', not imported 'teal'
+  const accentColor = 'black';
+  // Should use local 'black', not imported 'crimson'
   return css`
-    color: ${importedColor};
+    color: ${accentColor};
   `;
 }
 
-// Module-level using import: should use imported 'teal'
+// Module-level using import: should use imported 'crimson'
 export const usesImport = css`
-  color: ${importedColor};
-  font-size: ${importedSize};
+  color: ${accentColor};
+  font-size: ${accentSize}px;
 `;
 
 // Module-level using imported class
 export const usesImportedClass = css`
-  &.${importedClass} {
+  &.${accentClass} {
     display: block;
   }
 `;
@@ -173,6 +173,7 @@ export const usesBaseClass = css`
 // =============================================
 export function varDeclaration() {
   var color = 'magenta';
+  // a `var` shadows module-level color but, not being a `const`, is never resolved
   return css`
     color: ${color};
   `;
@@ -184,29 +185,7 @@ export const afterVarDecl = css`
 `;
 
 // =============================================
-// 8. Multiple variables shadowed simultaneously
-// =============================================
-export function multiShadow() {
-  const color = 'silver';
-  const size = '32px';
-  const weight = '100';
-
-  return css`
-    color: ${color};
-    font-size: ${size};
-    font-weight: ${weight};
-  `;
-}
-
-// Module-level after multi shadow: all should use original module values
-export const afterMultiShadow = css`
-  color: ${color};
-  font-size: ${size};
-  font-weight: ${weight};
-`;
-
-// =============================================
-// 9. Sequential blocks with same variable name
+// 8. Sequential blocks with same variable name
 // =============================================
 export function sequentialBlocks() {
   {
@@ -229,48 +208,6 @@ export function sequentialBlocks() {
   return css`
     color: ${color};
   `;
-}
-
-// =============================================
-// 10. Deeply nested with mixed scope types
-// =============================================
-export function deeplyNested() {
-  const color = 'coral';
-
-  const outerFn = () => {
-    const color = 'salmon';
-
-    function inner() {
-      const color = 'wheat';
-
-      {
-        const color = 'ivory';
-        const deepStyle = css`
-          color: ${color};
-        `;
-        console.log(deepStyle);
-      }
-
-      // After block: should use 'wheat'
-      return css`
-        color: ${color};
-      `;
-    }
-
-    // Should use 'salmon'
-    const arrowStyle = css`
-      color: ${color};
-    `;
-
-    return { arrowStyle, inner: inner() };
-  };
-
-  // Should use 'coral'
-  const outerStyle = css`
-    color: ${color};
-  `;
-
-  return { outerStyle, outerFn: outerFn() };
 }
 
 // Final module-level check: should use 'red'

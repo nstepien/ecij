@@ -17,6 +17,6 @@ export default defineConfig({
     sequence: {
       shuffle: true,
     },
-    printConsoleTrace: true,
+    printConsoleTrace: false,
   },
 });

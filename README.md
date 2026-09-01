@@ -135,6 +135,48 @@ ecij({
 });
 ```
 
+## Static resolution
+
+Interpolations are resolved at build time when they are:
+
+- string or number literals, including signed numbers (`${'red'}`, `${16}`, `${-5}`);
+- `const` bindings of such literals or of other `css` class names, following
+  lexical scoping — any other binding (`let`, `var`, parameters, destructuring,
+  …) shadows outer ones and is never resolved. Resolution is static, so a
+  template may reference a `const` or a class declared later in the file;
+- imports of such values from other modules — named, default and namespace
+  imports (`${tokens.color}`) — through any depth of re-exports (`export { x } from`,
+  `export * from`, `export * as ns from`) and barrel files, with ESM semantics:
+  explicit exports win over `export *`, a name provided by several `export *`
+  sources is ambiguous and not resolved, `export *` never forwards `default`, and
+  type-only imports/exports are ignored. A query suffix denotes a separate
+  module resolved on its own: `?raw` yields the file's text, `?url` its asset URL.
+
+Any other interpolation — calls, ternaries, template literals, identifiers whose
+value is not statically known (`let`/`var` bindings, parameters, ...) — causes
+the whole css`` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or
+`UNRESOLVED_INTERPOLATION`; `UNREADABLE_MODULE` reports an imported module whose
+source could not be read, `UNPARSEABLE_MODULE` a module the plugin could not parse). The runtime `css` call is left in place, so the
+mistake fails loudly instead of silently shipping broken styles.
+
+## Limitations
+
+- The `css` tag must be a named import from `'ecij'` (aliasing it is fine,
+  e.g. `import { css as styled } from 'ecij'`). Accessing it through a namespace
+  import or re-exporting it through another module is not supported and leaves
+  the templates untransformed.
+- Interpolations must statically resolve to strings or numbers, see
+  [Static resolution](#static-resolution).
+- Only `const` bindings are resolved: a `let` or `var` — even one that is never
+  reassigned — and an `export let` are not.
+- Circular imports are supported, but inside a cycle a module can only inline
+  the other module's class names whose declarations were already extracted when
+  the cycle was entered — declare such classes before the templates that
+  reference the other module.
+- Resolving an import waits for the imported module's transform. A wait cycle
+  closed through another plugin's `this.load` cannot be detected and would hang
+  the build.
+
 ## Development
 
 ### Building
@@ -166,7 +208,3 @@ npm test
 # Update inline snapshots after intentional changes
 npm test -- -u
 ```
-
-## TODO
-
-- Full import/export handling (default/namespace import/export)

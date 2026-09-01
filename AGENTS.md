@@ -44,11 +44,13 @@ CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compati
 
 ### Plugin Pipeline
 
-The plugin implements three Rolldown lifecycle hooks:
+The plugin implements five Rolldown lifecycle hooks:
 
-1. **`transform`** — Parses source files with `parseSync` (oxc-parser), identifies `css` tagged template literals imported from `ecij`, extracts their CSS content, replaces them with generated class name strings, and injects a side-effect import for the virtual CSS module. Edits are applied through `RolldownMagicString`: when Rolldown provides an instance via the hook's `meta` argument, it is mutated and returned directly so Rolldown generates the sourcemap natively; otherwise (e.g. Vite's dev-mode plugin container) the hook returns the transformed code with a generated sourcemap.
-2. **`resolveId`** — Resolves virtual CSS module IDs (e.g., `Button.tsx.<hash>.css`). Also re-resolves source files that have CSS extractions to prevent them from being tree-shaken when all their exports are statically evaluated away.
+1. **`transform`** — Parses source files with `parseSync` (oxc-parser), identifies `css` tagged template literals whose tag is a named import from `ecij` (respecting lexical shadowing), extracts their CSS content, replaces them with generated class name strings, and injects a side-effect import for the virtual CSS module after any hashbang and directive prologue. Interpolations are resolved statically: literals and lexically scoped `const` bindings directly (`let`/`var` bindings and parameters only shadow); imported bindings by loading the imported module (`this.load`, or the environment's `transformRequest` in Vite's dev server, where `this.load` does not run transforms and module code is read from the environment's module graph) and reading its parsed exports, following re-export chains (`export { x } from`, `export * from`, `export * as ns from`) with ESM precedence. Parse results are cached per module (`parsedFileInfoCache`) and in-flight loads are tracked (`pendingLoads`) so import cycles fall back to cached parse info instead of deadlocking. Modules whose values were inlined also get a side-effect import of their stylesheet, so their CSS survives tree-shaking once the original import becomes unused; a module that received such imports is returned with `moduleSideEffects: true`, so it is kept (with the stylesheets its own rules rely on) even inside a package declared side-effect free. Source files are parsed as the language Rolldown assigned them (`meta.moduleType`). A module's identity is its id minus Vite's marker queries (`?v=`, `?t=`, …), so query variants (`?raw`, an HTML page's inline `<script>`, …) keep separate parse info, classes and stylesheets. Edits are applied through `RolldownMagicString`: when Rolldown provides an instance via the hook's `meta` argument, it is mutated and returned directly so Rolldown generates the sourcemap natively; otherwise (e.g. Vite's dev-mode plugin container) the hook returns the transformed code with a generated sourcemap.
+2. **`resolveId`** — Resolves virtual CSS module IDs (e.g., `Button.tsx.<hash>.css`).
 3. **`load`** — Returns the extracted CSS content for virtual CSS module IDs.
+4. **`watchChange`** — Evicts the changed module's cached parse info, extracted classes and CSS module, so the next transform re-reads it instead of serving stale values.
+5. **`buildEnd`** — Clears all caches between builds.
 
 ## Code Style and Practices
 
@@ -61,6 +63,7 @@ The plugin implements three Rolldown lifecycle hooks:
 ## Testing
 
 Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`.
+Fixtures stand in for user code and are exempt from the naming conventions above: their exported constants stay camelCase, as in real application code.
 
 The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`.
 
