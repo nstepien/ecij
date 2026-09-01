@@ -64,7 +64,7 @@ The plugin implements three Rolldown lifecycle hooks:
 ## Code Style and Practices
 
 - **Formatter**: oxfmt. Configuration is in `.oxfmtrc.json`.
-- **Linter**: oxlint. Configuration is in `.oxlintrc.json`. Type-aware rules are enabled, which is why `oxlint-tsgolint` is a dev dependency. Suppressions must use `oxlint-disable` — `eslint-disable` comments are ignored, and a directive that suppresses nothing fails the lint. `test/fixtures/` is excluded: fixtures are deliberately pathological plugin input (unused parameters, shadowing, empty classes, `var` hoisting out of blocks), so lint findings there describe what a fixture tests rather than a defect. They are still type checked.
+- **Linter**: oxlint. Configuration is in `.oxlintrc.json`. Type-aware rules are enabled with `oxlint-tsgolint`.
 - **TypeScript**: Strict mode is enabled. Use `import type` for type-only imports. See `tsconfig.base.json` for the shared compiler configuration.
 - **Naming**: camelCase for variables/functions, PascalCase for interfaces, SCREAMING_SNAKE_CASE for module-level constants.
 - **Module format**: ESM only.
