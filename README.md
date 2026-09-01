@@ -1,6 +1,8 @@
 # ecij
 
 [![npm version](https://img.shields.io/npm/v/ecij)](https://www.npmjs.com/package/ecij)
+[![Vite compatibility](https://registry.vite.dev/api/badges?package=ecij&tool=vite)](https://registry.vite.dev/plugins?q=ecij)
+[![Rolldown compatibility](https://registry.vite.dev/api/badges?package=ecij&tool=rolldown)](https://registry.vite.dev/plugins?q=ecij)
 [![CI](https://github.com/nstepien/ecij/actions/workflows/ci.yml/badge.svg)](https://github.com/nstepien/ecij/actions/workflows/ci.yml)
 
 ecij (**E**xtract **C**SS-**i**n-**J**S) is a zero-runtime css-in-js plugin for [Rolldown](https://rolldown.rs/) and [Vite](https://vite.dev/).

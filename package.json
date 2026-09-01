@@ -1,11 +1,16 @@
 {
+  "$schema": "https://raw.githubusercontent.com/vitejs/vite-plugin-registry/refs/heads/main/data/schema/extended-package-json.schema.json",
   "name": "ecij",
   "version": "0.5.0",
-  "description": "Rolldown and Vite plugin to Extract CSS-in-JS",
+  "description": "Zero-runtime CSS-in-JS for Rolldown and Vite: statically extracts css tagged template literals",
   "keywords": [
+    "css",
     "css-in-js",
+    "rolldown",
     "rolldown-plugin",
-    "vite-plugin"
+    "vite",
+    "vite-plugin",
+    "zero-runtime"
   ],
   "homepage": "https://github.com/nstepien/ecij#readme",
   "bugs": {
@@ -59,6 +64,13 @@
   "peerDependenciesMeta": {
     "vite": {
       "optional": true
+    }
+  },
+  "compatiblePackages": {
+    "schemaVersion": 1,
+    "rollup": {
+      "type": "incompatible",
+      "reason": "Uses Rolldown-specific APIs"
     }
   }
 }
