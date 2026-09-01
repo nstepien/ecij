@@ -151,6 +151,16 @@ npm run build
 npm run format
 ```
 
+### Linting
+
+```bash
+# Report lint problems
+npm run lint
+
+# Fix the auto-fixable ones
+npm run lint:fix
+```
+
 ### Type Checking
 
 ```bash

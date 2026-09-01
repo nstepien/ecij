@@ -43,6 +43,8 @@
     "build": "rolldown -c",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
     "typecheck": "tsc --build",
     "test": "vitest run"
   },
