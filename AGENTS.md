@@ -50,6 +50,14 @@ The plugin implements three Rolldown lifecycle hooks:
 2. **`resolveId`** — Resolves virtual CSS module IDs (e.g., `Button.tsx.<hash>.css`). Also re-resolves source files that have CSS extractions to prevent them from being tree-shaken when all their exports are statically evaluated away.
 3. **`load`** — Returns the extracted CSS content for virtual CSS module IDs.
 
+## Package Metadata
+
+`package.json` doubles as the plugin's entry in the [Vite Plugin Registry](https://registry.vite.dev/), which harvests it from npm. Keep these fields accurate:
+
+- **`keywords`** — `vite-plugin` and `rolldown-plugin` are how the registry discovers the package; removing either delists it. The registry's search box substring-matches `name`, `description`, and `keywords`, so both fields double as discoverability surface.
+- **`peerDependencies`** — the declared `vite` and `rolldown` ranges become the compatibility matrix shown on the plugin card, and back the registry badges in `README.md`. Bumping a peer range changes what users see there.
+- **`compatiblePackages`** — declares what peer dependencies cannot. There is no `rollup` peer dependency, so the registry would infer "unknown" and warn on the card; the explicit `incompatible` entry states the real reason instead (`src/index.ts` imports `RolldownMagicString`, `rolldown/filter`, and `rolldown/utils`). Tools listed here override the peer-dependency inference, so do not restate `vite`/`rolldown` — that would just create a second place to bump.
+
 ## Code Style and Practices
 
 - **Formatter**: oxfmt. Configuration is in `.oxfmtrc.json`.
