@@ -70,7 +70,7 @@ function hashText(text: string): string {
   return createHash('md5').update(text).digest('hex').slice(0, 8);
 }
 
-export function ecij(configuration?: Configuration | undefined | null): Plugin {
+export function ecij(configuration?: Configuration | null): Plugin {
   const include = configuration?.include ?? JS_TS_FILE_REGEX;
   const exclude = configuration?.exclude ?? [NODE_MODULES_REGEX, D_TS_FILE_REGEX];
   const classPrefix = configuration?.classPrefix ?? 'css-';
