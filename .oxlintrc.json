@@ -5,6 +5,7 @@
     "correctness": "error"
   },
   "rules": {},
+  "ignorePatterns": ["/test/fixtures/"],
   "env": {
     "builtin": true
   }
