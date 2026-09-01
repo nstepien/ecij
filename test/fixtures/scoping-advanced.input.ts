@@ -131,7 +131,8 @@ export function defaultParam(color = 'blue') {
 // =============================================
 export function forStatementShadow() {
   for (let color = 'blue'; color !== 'done'; color = 'done') {
-    // color has a known init value inside the for-scope
+    // color is a `let` of the for-scope: it shadows module-level color and, not
+    // being a `const`, is never resolved
     console.log(
       css`
         color: ${color};
@@ -279,7 +280,8 @@ export function varInBlock() {
     `;
     console.log(inBlock);
   }
-  // var color hoists to function scope → resolves to 'blue', not module-level 'red'
+  // var color hoists to the function scope: it shadows module-level color for
+  // the whole function and, not being a `const`, is never resolved
   return css`
     color: ${color};
   `;
@@ -400,7 +402,87 @@ export function booleanLiteralShadow() {
 }
 
 // =============================================
-// 32. Module-level check: everything should still resolve
+// 32. var declarator after a sibling initializer with nested declarations
+// =============================================
+// The nested `let` inside the first declarator's initializer must not make the
+// second declarator block-scoped: `color` still hoists to the function scope.
+export function varAfterNestedDeclaration() {
+  {
+    var hasNested = () => {
+        let nested = 'unused';
+        return nested;
+      },
+      color = 'blue';
+    console.log(hasNested);
+  }
+  // → shadowed by the hoisted var: NOT extracted (not module-level 'red')
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 33. let with a literal initializer is not resolved
+// =============================================
+export function stableLet() {
+  let color = 'blue';
+  // only `const` bindings are static → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 34. Parameter defaults are evaluated outside the body scope
+// =============================================
+export function defaultParamScope(
+  x = css`
+    color: ${color};
+  `,
+) {
+  const color = 'blue';
+  // the default sees the module-level 'red', not the body's 'blue'
+  return [x, color];
+}
+
+// =============================================
+// 35. Parameter defaults cannot see the body's `var` declarations either
+// =============================================
+export function defaultParamVsBodyVar(
+  className = css`
+    color: ${color};
+  `,
+) {
+  var color = 'blue';
+  // with parameter expressions, body `var`s live in their own environment:
+  // the default sees the module-level 'red'
+  return [className, color];
+}
+
+// =============================================
+// 36. var-declared templates resolve their interpolations where they appear
+// =============================================
+// The `var` binding itself is never resolved, but the template is still
+// extracted, with its interpolations evaluated in the scope of the template.
+export function varDeclaredTemplates() {
+  {
+    const color = 'blue';
+    // color is the block's 'blue', not the module's 'red'
+    var inBlock = css`
+      color: ${color};
+    `;
+  }
+  for (const color of ['green', 'purple']) {
+    // the loop variable has no static value → NOT extracted
+    var inLoop = css`
+      color: ${color};
+    `;
+  }
+  return [inBlock, inLoop!];
+}
+
+// =============================================
+// 37. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
