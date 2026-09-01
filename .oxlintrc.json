@@ -6,11 +6,30 @@
     "respectEslintDisableDirectives": false,
     "typeAware": true
   },
-  "plugins": ["typescript", "unicorn", "oxc"],
+  "plugins": [
+    "eslint",
+    "import",
+    "jsdoc",
+    "node",
+    "oxc",
+    "promise",
+    "typescript",
+    "unicorn",
+    "vitest"
+  ],
   "categories": {
-    "correctness": "error"
+    "correctness": "warn",
+    "perf": "warn",
+    "suspicious": "warn"
   },
-  "rules": {},
+  "rules": {
+    "eslint/no-await-in-loop": "off",
+    "eslint/no-shadow": "off",
+    "typescript/consistent-return": "off",
+    "typescript/no-unsafe-type-assertion": "off",
+    // TODO: enable
+    "unicorn/consistent-function-scoping": "off"
+  },
   "ignorePatterns": ["/test/fixtures/"],
   "env": {
     "builtin": true
