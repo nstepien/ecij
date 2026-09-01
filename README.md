@@ -149,10 +149,10 @@ npm run build
 # Format the code
 npm run format
 
-# Report lint problems
+# Run the linter
 npm run lint
 
-# Fix the auto-fixable lint problems
+# Auto-fix lints
 npm run lint:fix
 
 # Type check
@@ -161,11 +161,9 @@ npm run typecheck
 # Run tests once
 npm test
 
-# Update inline snapshots after intentional changes
+# Update test snapshots
 npm test -- -u
 ```
-
-Tests are **integration tests** using **inline snapshot testing** to validate transformations, so `npm test -- -u` is how intentional changes to the output are accepted.
 
 ## TODO
 
