@@ -142,33 +142,26 @@ ecij({
 
 ## Development
 
-### Building
-
 ```bash
+# Build the plugin
 npm run build
-```
 
-### Formatting
-
-```bash
+# Format the code
 npm run format
-```
 
-### Type Checking
+# Run the linter
+npm run lint
 
-```bash
+# Auto-fix lints
+npm run lint:fix
+
+# Type check
 npm run typecheck
-```
 
-### Running Tests
-
-The project uses **integration tests** with **inline snapshot testing** to validate transformations.
-
-```bash
 # Run tests once
 npm test
 
-# Update inline snapshots after intentional changes
+# Update test snapshots
 npm test -- -u
 ```
 

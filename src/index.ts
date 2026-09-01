@@ -96,7 +96,7 @@ function hashText(text: string): string {
  * ```
  * @see [ecij documentation](https://github.com/nstepien/ecij#readme)
  */
-export function ecij(configuration?: Configuration | undefined | null): Plugin {
+export function ecij(configuration?: Configuration | null): Plugin {
   const include = configuration?.include ?? JS_TS_FILE_REGEX;
   const exclude = configuration?.exclude ?? [NODE_MODULES_REGEX, D_TS_FILE_REGEX];
   const classPrefix = configuration?.classPrefix ?? 'css-';

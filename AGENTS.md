@@ -20,6 +20,8 @@ Node 24+ is required.
 | Type check   | `node --run typecheck`    |
 | Format check | `node --run format:check` |
 | Format (fix) | `node --run format`       |
+| Lint         | `node --run lint`         |
+| Lint (fix)   | `node --run lint:fix`     |
 | Test         | `node --run test`         |
 
 **Before pushing**, merge the target branch into your branch to ensure you're working with up-to-date code, conflicts are caught early, and reviewers see accurate diffs.
@@ -28,6 +30,7 @@ Node 24+ is required.
 
 ```sh
 node --run format
+node --run lint
 node --run typecheck
 node --run build
 node --run test
@@ -61,6 +64,7 @@ The plugin implements three Rolldown lifecycle hooks:
 ## Code Style and Practices
 
 - **Formatter**: oxfmt. Configuration is in `.oxfmtrc.json`.
+- **Linter**: oxlint. Configuration is in `.oxlintrc.json`. Type-aware rules are enabled with `oxlint-tsgolint`.
 - **TypeScript**: Strict mode is enabled. Use `import type` for type-only imports. See `tsconfig.base.json` for the shared compiler configuration.
 - **Naming**: camelCase for variables/functions, PascalCase for interfaces, SCREAMING_SNAKE_CASE for module-level constants.
 - **Module format**: ESM only.

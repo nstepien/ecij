@@ -39,6 +39,9 @@ jobs:
       - name: Check formatting
         run: node --run format:check
 
+      - name: Lint
+        run: node --run lint
+
       - name: Type check
         run: node --run typecheck
 
