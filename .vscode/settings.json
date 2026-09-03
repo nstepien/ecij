@@ -6,9 +6,5 @@
     "source.format.oxc": "explicit"
   },
   "editor.defaultFormatter": "oxc.oxc-vscode",
-  "js/ts.experimental.useTsgo": true,
-  "oxc.path.tsgolint": "node_modules/.bin/tsgolint.cmd",
-  "terminal.integrated.env.windows": {
-    "OXLINT_TSGOLINT_PATH": "node_modules/.bin/tsgolint.cmd"
-  }
+  "js/ts.experimental.useTsgo": true
 }
