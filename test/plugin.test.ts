@@ -1405,30 +1405,34 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
   `);
 });
 
-test.fails('support rolldownOptions.optimization.inlineConst = true', async () => {
-  const fixturePath = './test/fixtures/inline-const.ts';
-  const result = await buildWithPlugin(fixturePath, undefined, {
-    rolldownOptions: {
-      optimization: {
-        inlineConst: true,
+// Inlining the class names leaves the module they were declared in without any used export,
+// so the extracted CSS is only kept if the plugin declares the stylesheet import as a side effect
+test.for([true, { mode: 'all' }] as const)(
+  'support rolldownOptions.optimization.inlineConst = %o',
+  async (inlineConst) => {
+    const fixturePath = './test/fixtures/inline-const.ts';
+    const result = await buildWithPlugin(fixturePath, undefined, {
+      rolldownOptions: {
+        optimization: {
+          inlineConst,
+        },
       },
-    },
-  });
+    });
 
-  expect(result.js).toMatchInlineSnapshot(`
-    "//#endregion
-    //#region test/fixtures/inline-const.ts
-    console.log("css-90f511d6");
-    //#endregion"
-  `);
-  expect(result.css).toMatchInlineSnapshot(`
-    ".css-90f511d6 {
-      border: 1px solid blue;
-      padding: 10px;
-    }/*$vite$:1*/"
-  `);
-  expect(result.logs).toMatchInlineSnapshot(`[]`);
-});
+    expect(result.js).toMatchInlineSnapshot(`
+      "//#region test/fixtures/inline-const.ts
+      console.log("css-90f511d6");
+      //#endregion"
+    `);
+    expect(result.css).toMatchInlineSnapshot(`
+      ".css-90f511d6 {
+        border: 1px solid blue;
+        padding: 10px;
+      }/*$vite$:1*/"
+    `);
+    expect(result.logs).toMatchInlineSnapshot(`[]`);
+  },
+);
 
 test('classPrefix setting', async () => {
   const fixturePath = './test/fixtures/basic.input.ts';

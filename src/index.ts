@@ -687,16 +687,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
     },
 
     resolveId(id) {
-      // Ensure CSS modules are treated as having side effects
+      // Stylesheet modules are only ever imported for their side effects,
+      // so declare them as such rather than relying on the bundler's defaults.
       if (extractedCssPerFile.has(id)) {
-        return id;
-      }
-
-      // Ensure JS modules with CSS extractions are included,
-      // otherwise they may be tree-shaken away if
-      // all their exports are evaluated away
-      if (parsedFileInfoCache.has(id) && parsedFileInfoCache.get(id)!.declarations.length !== 0) {
-        return id;
+        return { id, moduleSideEffects: true };
       }
 
       return null;
@@ -741,7 +735,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
         }
 
         // Avoid outputing empty CSS modules
-        if (cssContent !== '') {
+        const hasStylesheetImport = cssContent !== '';
+
+        if (hasStylesheetImport) {
           // Generate CSS module ID for this file
           // A hash of the CSS content is created to make HMR work
           // Use the original file path with .css extension
@@ -771,13 +767,23 @@ export function ecij(configuration?: Configuration | null): Plugin {
           magicString.prepend(importStatements.join(''));
         }
 
+        // Declare the injected stylesheet import as a side effect of this module.
+        // The class names replacing the `css` tagged template literals are plain string
+        // constants, so the bundler may inline them into the modules using them
+        // (`optimization.inlineConst`), leaving this module without a single used export.
+        // Anything declaring it side-effect free — `sideEffects: false` in the nearest
+        // `package.json`, a `treeshake.moduleSideEffects` setting — would then drop the whole
+        // module, taking the stylesheet with it and silently shipping unstyled markup.
+        const moduleSideEffects = hasStylesheetImport ? true : null;
+
         if (meta.magicString) {
-          return { code: meta.magicString };
+          return { code: meta.magicString, moduleSideEffects };
         }
 
         return {
           code: magicString.toString(),
           map: magicString.generateMap({ hires: 'boundary' }).toString(),
+          moduleSideEffects,
         };
       },
     },

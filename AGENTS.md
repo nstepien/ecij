@@ -49,8 +49,8 @@ CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compati
 
 The plugin implements three Rolldown lifecycle hooks:
 
-1. **`transform`** — Parses source files with `parseSync` (oxc-parser), identifies `css` tagged template literals imported from `ecij`, extracts their CSS content, replaces them with generated class name strings, and injects a side-effect import for the virtual CSS module. Edits are applied through `RolldownMagicString`: when Rolldown provides an instance via the hook's `meta` argument, it is mutated and returned directly so Rolldown generates the sourcemap natively; otherwise (e.g. Vite's dev-mode plugin container) the hook returns the transformed code with a generated sourcemap.
-2. **`resolveId`** — Resolves virtual CSS module IDs (e.g., `Button.tsx.<hash>.css`). Also re-resolves source files that have CSS extractions to prevent them from being tree-shaken when all their exports are statically evaluated away.
+1. **`transform`** — Parses source files with `parseSync` (oxc-parser), identifies `css` tagged template literals imported from `ecij`, extracts their CSS content, replaces them with generated class name strings, and injects a side-effect import for the virtual CSS module. Edits are applied through `RolldownMagicString`: when Rolldown provides an instance via the hook's `meta` argument, it is mutated and returned directly so Rolldown generates the sourcemap natively; otherwise (e.g. Vite's dev-mode plugin container) the hook returns the transformed code with a generated sourcemap. Modules that receive that import are returned with `moduleSideEffects: true`, which keeps them (and their CSS) in the bundle once their class names — now plain string constants — are inlined into their importers by `optimization.inlineConst`.
+2. **`resolveId`** — Resolves virtual CSS module IDs (e.g., `Button.tsx.<hash>.css`), declaring them as having side effects.
 3. **`load`** — Returns the extracted CSS content for virtual CSS module IDs.
 
 ## Package Metadata
