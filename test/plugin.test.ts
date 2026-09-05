@@ -1,25 +1,30 @@
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
 import type { OutputAsset, RolldownLog } from 'rolldown';
-import { build } from 'vite';
+import { build, type BuildEnvironmentOptions } from 'vite';
 import { assert, expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replace(/^.*\/test\//, 'test/');
 
 // Helper to run a vite build with the ecij plugin
-async function buildWithPlugin(entry: string, pluginOptions?: Configuration, sourcemap = false) {
+async function buildWithPlugin(
+  entry: string,
+  pluginOptions?: Configuration,
+  opts?: BuildEnvironmentOptions,
+) {
   const logs: RolldownLog[] = [];
 
   const output = await build({
     build: {
+      ...opts,
       lib: {
         entry,
         formats: ['es'],
       },
       minify: false,
       write: false,
-      sourcemap,
       rolldownOptions: {
+        ...opts?.rolldownOptions,
         onLog(level, log, handler) {
           if (log.plugin === 'ecij') {
             // Normalize absolute paths so snapshots are stable across machines
@@ -47,7 +52,7 @@ async function buildWithPlugin(entry: string, pluginOptions?: Configuration, sou
   const chunks = output.flatMap((chunk) => chunk.output);
 
   // Should only have JS and CSS outputs, plus the JS sourcemap when enabled
-  expect(chunks.length).toBeLessThanOrEqual(sourcemap ? 3 : 2);
+  expect(chunks.length).toBeLessThanOrEqual(opts?.sourcemap ? 3 : 2);
 
   // Extract JS and CSS chunks
   const jsChunk = chunks.find((chunk) => chunk.type === 'chunk');
@@ -148,10 +153,10 @@ test('comprehensive CSS-in-JS patterns', async () => {
 
 test('emit sourcemaps for transformed modules without sourcemap warnings', async () => {
   const fixturePath = './test/fixtures/comprehensive.input.ts';
-  const { js, map, logs } = await buildWithPlugin(fixturePath, undefined, true);
+  const { js, map, logs } = await buildWithPlugin(fixturePath, undefined, { sourcemap: true });
 
   // No SOURCEMAP_BROKEN warnings should be emitted for the plugin's transforms
-  expect(logs).toStrictEqual([]);
+  expect(logs).toMatchInlineSnapshot(`[]`);
 
   assert(map != null, 'Expected the JS chunk to have a sourcemap');
 
@@ -1398,6 +1403,31 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       },
     ]
   `);
+});
+
+test.fails('support rolldownOptions.optimization.inlineConst = true', async () => {
+  const fixturePath = './test/fixtures/inline-const.ts';
+  const result = await buildWithPlugin(fixturePath, undefined, {
+    rolldownOptions: {
+      optimization: {
+        inlineConst: true,
+      },
+    },
+  });
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#endregion
+    //#region test/fixtures/inline-const.ts
+    console.log("css-90f511d6");
+    //#endregion"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-90f511d6 {
+      border: 1px solid blue;
+      padding: 10px;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
 test('classPrefix setting', async () => {
