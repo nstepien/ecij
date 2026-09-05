@@ -751,10 +751,11 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
           const importStatements: string[] = [];
 
-          // Include side-effect imports for modules from which class names were imported.
-          // Otherwise, the original imports may be treated as being free of side-effects,
-          // leading those imports to be omitted from the final bundle,
-          // along with their extracted CSS.
+          // Import the stylesheets of the modules whose class names were interpolated into
+          // the CSS above, ahead of this module's own. These statements are prepended to the
+          // file, so leaving them out would emit this module's CSS before the CSS it
+          // references, inverting the cascade. Keeping those modules in the bundle at all is
+          // `moduleSideEffects`' job, below.
           for (const id of stylesheetDependencies) {
             importStatements.push(`import ${JSON.stringify(id)};\n`);
           }
