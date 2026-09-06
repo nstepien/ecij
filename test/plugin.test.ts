@@ -1,25 +1,30 @@
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
 import type { OutputAsset, RolldownLog } from 'rolldown';
-import { build } from 'vite';
+import { build, type BuildEnvironmentOptions } from 'vite';
 import { assert, expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replace(/^.*\/test\//, 'test/');
 
 // Helper to run a vite build with the ecij plugin
-async function buildWithPlugin(entry: string, pluginOptions?: Configuration, sourcemap = false) {
+async function buildWithPlugin(
+  entry: string,
+  pluginOptions?: Configuration,
+  opts?: BuildEnvironmentOptions,
+) {
   const logs: RolldownLog[] = [];
 
   const output = await build({
     build: {
+      ...opts,
       lib: {
         entry,
         formats: ['es'],
       },
       minify: false,
       write: false,
-      sourcemap,
       rolldownOptions: {
+        ...opts?.rolldownOptions,
         onLog(level, log, handler) {
           if (log.plugin === 'ecij') {
             // Normalize absolute paths so snapshots are stable across machines
@@ -47,7 +52,7 @@ async function buildWithPlugin(entry: string, pluginOptions?: Configuration, sou
   const chunks = output.flatMap((chunk) => chunk.output);
 
   // Should only have JS and CSS outputs, plus the JS sourcemap when enabled
-  expect(chunks.length).toBeLessThanOrEqual(sourcemap ? 3 : 2);
+  expect(chunks.length).toBeLessThanOrEqual(opts?.sourcemap ? 3 : 2);
 
   // Extract JS and CSS chunks
   const jsChunk = chunks.find((chunk) => chunk.type === 'chunk');
@@ -76,13 +81,13 @@ test('comprehensive CSS-in-JS patterns', async () => {
   // - Inline CSS (not assigned to variable)
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/comprehensive.input.ts
-    var buttonClass = "css-39ccb25d";
-    var primaryClass = "css-7a998145";
-    var secondaryClass = "css-6c03a746";
-    var importedClass = "css-4f842925";
-    var nestedClass = "css-234be203";
+    var buttonClass = \`css-39ccb25d\`;
+    var primaryClass = \`css-7a998145\`;
+    var secondaryClass = \`css-6c03a746\`;
+    var importedClass = \`css-4f842925\`;
+    var nestedClass = \`css-234be203\`;
     function getButtonClass() {
-    	return "css-6c89bbd7";
+    	return \`css-6c89bbd7\`;
     }
     //#endregion
     export { buttonClass, getButtonClass, importedClass, nestedClass, primaryClass, secondaryClass };"
@@ -148,10 +153,10 @@ test('comprehensive CSS-in-JS patterns', async () => {
 
 test('emit sourcemaps for transformed modules without sourcemap warnings', async () => {
   const fixturePath = './test/fixtures/comprehensive.input.ts';
-  const { js, map, logs } = await buildWithPlugin(fixturePath, undefined, true);
+  const { js, map, logs } = await buildWithPlugin(fixturePath, undefined, { sourcemap: true });
 
   // No SOURCEMAP_BROKEN warnings should be emitted for the plugin's transforms
-  expect(logs).toStrictEqual([]);
+  expect(logs).toMatchInlineSnapshot(`[]`);
 
   assert(map != null, 'Expected the JS chunk to have a sourcemap');
 
@@ -161,12 +166,12 @@ test('emit sourcemaps for transformed modules without sourcemap warnings', async
   // The generated class name string should map back to the position of
   // the css`` tagged template it replaced in the original source
   const generatedLines = js!.split('\n');
-  const generatedLine = generatedLines.findIndex((line) => line.includes('"css-39ccb25d"'));
+  const generatedLine = generatedLines.findIndex((line) => line.includes('`css-39ccb25d`'));
   expect(generatedLine).not.toBe(-1);
 
   const originalPosition = originalPositionFor(new TraceMap(map as EncodedSourceMap), {
     line: generatedLine + 1,
-    column: generatedLines[generatedLine]!.indexOf('"css-39ccb25d"'),
+    column: generatedLines[generatedLine]!.indexOf('`css-39ccb25d`'),
   });
 
   // `buttonClass` is declared on line 7 of the fixture,
@@ -185,10 +190,10 @@ test('generate hash based on file path relative to root and file name to avoid n
 
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/identical-first.ts
-    var myClass = "css-3f848070";
+    var myClass = \`css-3f848070\`;
     //#endregion
     //#region test/fixtures/identical-second.ts
-    var myClass$1 = "css-5a57e4d1";
+    var myClass$1 = \`css-5a57e4d1\`;
     //#endregion
     export { myClass as firstClass, myClass$1 as secondClass };"
   `);
@@ -316,11 +321,11 @@ test('inline string and number literal interpolations', async () => {
     }
     //#endregion
     //#region test/fixtures/literal-interpolation.input.ts
-    var stringLiteralClass = "css-1c8f4a51";
-    var numberLiteralClass = "css-25b58437";
-    var mixedClass = "css-0a775b56";
-    var negativeNumberClass = "css-f5d083cc";
-    var unaryPlusClass = "css-3924bbbe";
+    var stringLiteralClass = \`css-1c8f4a51\`;
+    var numberLiteralClass = \`css-25b58437\`;
+    var mixedClass = \`css-0a775b56\`;
+    var negativeNumberClass = \`css-f5d083cc\`;
+    var unaryPlusClass = \`css-3924bbbe\`;
     var booleanLiteralClass = css\`
       color: \${true};
     \`;
@@ -383,7 +388,7 @@ test('skip empty css blocks', async () => {
 
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/empty-css.input.ts
-    var emptyClass = "css-f993173e";
+    var emptyClass = \`css-f993173e\`;
     //#endregion
     export { emptyClass };"
   `);
@@ -399,78 +404,78 @@ test('variable scoping and shadowing', async () => {
 
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/scoping.input.ts
-    var topLevelStyle = "css-0195f7e3";
+    var topLevelStyle = \`css-0195f7e3\`;
     function functionShadow() {
-    	return "css-411204c9";
+    	return \`css-411204c9\`;
     }
-    var afterFunctionShadow = "css-8a8b8960";
+    var afterFunctionShadow = \`css-8a8b8960\`;
     function level1() {
     	function level2() {
     		function level3() {
-    			return "css-659695df";
+    			return \`css-659695df\`;
     		}
     		return {
-    			l2style: "css-3d6fa251",
+    			l2style: \`css-3d6fa251\`,
     			level3: level3()
     		};
     	}
     	return {
-    		l1style: "css-cde0a254",
+    		l1style: \`css-cde0a254\`,
     		level2: level2()
     	};
     }
-    var afterNestedFunctions = "css-99472906";
+    var afterNestedFunctions = \`css-99472906\`;
     var arrowShadow = () => {
-    	return "css-17f33205";
+    	return \`css-17f33205\`;
     };
-    var afterArrowShadow = "css-51830571";
+    var afterArrowShadow = \`css-51830571\`;
     function blockScope() {
-    	const beforeBlock = "css-ccba37a0";
-    	console.log("css-6735f3b4");
+    	const beforeBlock = \`css-ccba37a0\`;
+    	console.log(\`css-6735f3b4\`);
     	return {
     		beforeBlock,
-    		afterBlock: "css-65e6a255"
+    		afterBlock: \`css-65e6a255\`
     	};
     }
     function shadowsImport() {
-    	return "css-225f18cd";
+    	return \`css-225f18cd\`;
     }
-    var usesImport = "css-61cf5dea";
-    var usesImportedClass = "css-4d5166f1";
+    var usesImport = \`css-61cf5dea\`;
+    var usesImportedClass = \`css-4d5166f1\`;
     function shadowsCssClass() {
-    	return "css-9ce6da78";
+    	return \`css-9ce6da78\`;
     }
-    var usesBaseClass = "css-ffc7c674";
+    var usesBaseClass = \`css-ffc7c674\`;
     function varDeclaration() {
-    	return "css-68d2d974";
+    	return \`css-68d2d974\`;
     }
-    var afterVarDecl = "css-5519aacd";
+    var afterVarDecl = \`css-5519aacd\`;
     function multiShadow() {
-    	return "css-6946e38a";
+    	return \`css-6946e38a\`;
     }
-    var afterMultiShadow = "css-dd6f0f89";
+    var afterMultiShadow = \`css-dd6f0f89\`;
     function sequentialBlocks() {
-    	console.log("css-4156e44e");
-    	console.log("css-1890c5b2");
-    	return "css-980c7373";
+    	console.log(\`css-4156e44e\`);
+    	console.log(\`css-1890c5b2\`);
+    	return \`css-980c7373\`;
     }
     function deeplyNested() {
     	const outerFn = () => {
     		function inner() {
-    			console.log("css-81becece");
-    			return "css-5866845a";
+    			console.log(\`css-81becece\`);
+    			return \`css-5866845a\`;
     		}
     		return {
-    			arrowStyle: "css-92f15a0f",
+    			arrowStyle: \`css-92f15a0f\`,
     			inner: inner()
     		};
     	};
     	return {
-    		outerStyle: "css-373046c6",
+    		outerStyle: \`css-373046c6\`,
     		outerFn: outerFn()
     	};
     }
-    var finalModuleStyle = "css-157eeb32";
+    var finalModuleStyle = \`css-157eeb32\`;
     //#endregion
     export { afterArrowShadow, afterFunctionShadow, afterMultiShadow, afterNestedFunctions, afterVarDecl, arrowShadow, blockScope, deeplyNested, finalModuleStyle, functionShadow, level1, multiShadow, sequentialBlocks, shadowsCssClass, shadowsImport, topLevelStyle, usesBaseClass, usesImport, usesImportedClass, varDeclaration };"
   `);
@@ -649,19 +654,19 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         color: \${color};
       \`;
     function paramPartialShadow(color) {
-    	return "css-72a8e6d6";
+    	return \`css-72a8e6d6\`;
     }
     function forOfShadow() {
     	for (const color of ["blue", "green"]) console.log(css\`
             color: \${color};
           \`);
-    	return "css-6243fe14";
+    	return \`css-6243fe14\`;
     }
     function forInShadow() {
     	for (const color in { blue: 1 }) console.log(css\`
             color: \${color};
           \`);
-    	return "css-330916ac";
+    	return \`css-330916ac\`;
     }
     function catchShadow() {
     	try {
@@ -671,7 +676,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
             color: \${color};
           \`);
     	}
-    	return "css-a30d4f0f";
+    	return \`css-a30d4f0f\`;
     }
     function letNoInit() {
     	return css\`
@@ -689,13 +694,13 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       \`;
     }
     function forStatementShadow() {
-    	for (let color = "blue"; color !== "done"; color = "done") console.log("css-c7155baa");
-    	return "css-f19ded5e";
+    	for (let color = "blue"; color !== "done"; color = "done") console.log(\`css-c7155baa\`);
+    	return \`css-f19ded5e\`;
     }
     var MyClass = class MyClass {
     	static style;
     	static {
-    		MyClass.style = "css-5f19011e";
+    		MyClass.style = \`css-5f19011e\`;
     	}
     };
     function fnDeclShadow() {
@@ -711,7 +716,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       \`;
     }
     function fnExprName() {
-    	return "css-c8fe0069";
+    	return \`css-c8fe0069\`;
     }
     var fnExprNameInner = function color() {
     	return css\`
@@ -724,7 +729,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       \`;
     };
     var classExprName = class color {};
-    var afterClassExpr = "css-9c55bf3b";
+    var afterClassExpr = \`css-9c55bf3b\`;
     function arrayDestructuring() {
     	const [color] = ["blue"];
     	return css\`
@@ -741,7 +746,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     	for (const [color] of [["blue"]]) console.log(css\`
             color: \${color};
           \`);
-    	return "css-fd3f8093";
+    	return \`css-fd3f8093\`;
     }
     function destructuredParam({ color }) {
     	return css\`
@@ -749,8 +754,8 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       \`;
     }
     function varInBlock() {
-    	console.log("css-b7f7cd35");
-    	return "css-14873b06";
+    	console.log(\`css-b7f7cd35\`);
+    	return \`css-14873b06\`;
     }
     function varForOf() {
     	for (var color of ["blue", "green"]) console.log(css\`
@@ -791,9 +796,9 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
     }
     function switchScope(value) {
     	switch (value) {
-    		case "a": console.log("css-9c07daeb");
+    		case "a": console.log(\`css-9c07daeb\`);
     	}
-    	return "css-98764909";
+    	return \`css-98764909\`;
     }
     function tag(_) {
     	return "";
@@ -808,7 +813,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         color: \${true};
       \`;
     }
-    var finalModuleCheck = "css-7ff6d232";
+    var finalModuleCheck = \`css-7ff6d232\`;
     //#endregion
     export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, switchScope, varForIn, varForOf, varInBlock };"
   `);
@@ -1400,6 +1405,61 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
   `);
 });
 
+// Inlining the class names leaves the module they were declared in without any used export,
+// so the extracted CSS is only kept if the plugin declares the stylesheet import as a side effect
+test.for([true, { mode: 'all' }] as const)(
+  'support rolldownOptions.optimization.inlineConst = %o',
+  async (inlineConst) => {
+    const fixturePath = './test/fixtures/inline-const.ts';
+    const result = await buildWithPlugin(fixturePath, undefined, {
+      rolldownOptions: {
+        optimization: {
+          inlineConst,
+        },
+      },
+    });
+
+    expect(result.js).toMatchInlineSnapshot(`
+      "//#endregion
+      //#region test/fixtures/inline-const.ts
+      console.log(\`css-90f511d6\`);
+      //#endregion"
+    `);
+    expect(result.css).toMatchInlineSnapshot(`
+      ".css-90f511d6 {
+        border: 1px solid blue;
+        padding: 10px;
+      }/*$vite$:1*/"
+    `);
+    expect(result.logs).toMatchInlineSnapshot(`[]`);
+  },
+);
+
+test('keep extracted CSS when class names are inlined through a barrel', async () => {
+  const fixturePath = './test/fixtures/inline-const-barrel.ts';
+  const result = await buildWithPlugin(fixturePath, undefined, {
+    rolldownOptions: {
+      optimization: {
+        inlineConst: true,
+      },
+    },
+  });
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#endregion
+    //#region test/fixtures/inline-const-barrel.ts
+    console.log(\`css-90f511d6\`);
+    //#endregion"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-90f511d6 {
+      border: 1px solid blue;
+      padding: 10px;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
 test('classPrefix setting', async () => {
   const fixturePath = './test/fixtures/basic.input.ts';
   const result = await buildWithPlugin(fixturePath, {
@@ -1408,7 +1468,7 @@ test('classPrefix setting', async () => {
 
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/basic.input.ts
-    var basicClass = "custom_90f511d6";
+    var basicClass = \`custom_90f511d6\`;
     //#endregion
     export { basicClass };"
   `);

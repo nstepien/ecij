@@ -54,9 +54,9 @@ Build output:
 /* js */
 const color = 'red';
 
-const redClassname = 'css-a1b2c3d4';
+const redClassname = `css-a1b2c3d4`;
 
-const myButtonClassname = 'css-1d2c3b4a';
+const myButtonClassname = `css-1d2c3b4a`;
 ```
 
 ```css

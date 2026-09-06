@@ -651,8 +651,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // so an accurate sourcemap can be generated for the edits
     const magicString = meta.magicString ?? new RolldownMagicString(code);
 
+    // Emit each class name as a template literal instead of a string literal
+    // to prevent issues with tree-shaking (see inlineConst tests)
     for (const { start, end, className } of replacements) {
-      magicString.overwrite(start, end, `'${className}'`);
+      magicString.overwrite(start, end, '`' + className + '`');
     }
 
     // Sort CSS extractions by source position to maintain original order
@@ -687,15 +689,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
     },
 
     resolveId(id) {
-      // Ensure CSS modules are treated as having side effects
+      // Claim the generated stylesheet IDs. They look like file paths but do not exist on
+      // disk, so without this they would fail to resolve before `load` ever sees them.
       if (extractedCssPerFile.has(id)) {
-        return id;
-      }
-
-      // Ensure JS modules with CSS extractions are included,
-      // otherwise they may be tree-shaken away if
-      // all their exports are evaluated away
-      if (parsedFileInfoCache.has(id) && parsedFileInfoCache.get(id)!.declarations.length !== 0) {
         return id;
       }
 
@@ -755,10 +751,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
           const importStatements: string[] = [];
 
-          // Include side-effect imports for modules from which class names were imported.
-          // Otherwise, the original imports may be treated as being free of side-effects,
-          // leading those imports to be omitted from the final bundle,
-          // along with their extracted CSS.
+          // Import the stylesheets of the modules whose class names were interpolated into
+          // the CSS above, ahead of this module's own. These statements are prepended to the
+          // file, so leaving them out would emit this module's CSS before the CSS it
+          // references, inverting the cascade.
           for (const id of stylesheetDependencies) {
             importStatements.push(`import ${JSON.stringify(id)};\n`);
           }
