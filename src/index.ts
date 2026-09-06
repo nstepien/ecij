@@ -651,8 +651,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // so an accurate sourcemap can be generated for the edits
     const magicString = meta.magicString ?? new RolldownMagicString(code);
 
+    // Emit each class name as a template literal instead of a string literal
+    // to prevent issues with tree-shaking (see inlineConst tests)
     for (const { start, end, className } of replacements) {
-      magicString.overwrite(start, end, `'${className}'`);
+      magicString.overwrite(start, end, '`' + className + '`');
     }
 
     // Sort CSS extractions by source position to maintain original order
@@ -687,10 +689,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
     },
 
     resolveId(id) {
-      // Stylesheet modules are only ever imported for their side effects,
-      // so declare them as such rather than relying on the bundler's defaults.
+      // Claim the generated stylesheet IDs. They look like file paths but do not exist on
+      // disk, so without this they would fail to resolve before `load` ever sees them.
       if (extractedCssPerFile.has(id)) {
-        return { id, moduleSideEffects: true };
+        return id;
       }
 
       return null;
@@ -735,9 +737,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
         }
 
         // Avoid outputing empty CSS modules
-        const hasStylesheetImport = cssContent !== '';
-
-        if (hasStylesheetImport) {
+        if (cssContent !== '') {
           // Generate CSS module ID for this file
           // A hash of the CSS content is created to make HMR work
           // Use the original file path with .css extension
@@ -754,8 +754,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
           // Import the stylesheets of the modules whose class names were interpolated into
           // the CSS above, ahead of this module's own. These statements are prepended to the
           // file, so leaving them out would emit this module's CSS before the CSS it
-          // references, inverting the cascade. Keeping those modules in the bundle at all is
-          // `moduleSideEffects`' job, below.
+          // references, inverting the cascade.
           for (const id of stylesheetDependencies) {
             importStatements.push(`import ${JSON.stringify(id)};\n`);
           }
@@ -768,23 +767,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
           magicString.prepend(importStatements.join(''));
         }
 
-        // Declare the injected stylesheet import as a side effect of this module.
-        // The class names replacing the `css` tagged template literals are plain string
-        // constants, so the bundler may inline them into the modules using them
-        // (`optimization.inlineConst`), leaving this module without a single used export.
-        // Anything declaring it side-effect free — `sideEffects: false` in the nearest
-        // `package.json`, a `treeshake.moduleSideEffects` setting — would then drop the whole
-        // module, taking the stylesheet with it and silently shipping unstyled markup.
-        const moduleSideEffects = hasStylesheetImport ? true : null;
-
         if (meta.magicString) {
-          return { code: meta.magicString, moduleSideEffects };
+          return { code: meta.magicString };
         }
 
         return {
           code: magicString.toString(),
           map: magicString.generateMap({ hires: 'boundary' }).toString(),
-          moduleSideEffects,
         };
       },
     },
