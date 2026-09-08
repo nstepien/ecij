@@ -10,6 +10,7 @@ export default defineConfig({
   },
   test: {
     dir: 'test',
+    injectCjsGlobals: false,
     include: ['./**/*.test.*'],
     coverage: {
       enabled: true,
