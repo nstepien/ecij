@@ -45,15 +45,15 @@
   },
   "devDependencies": {
     "@jridgewell/trace-mapping": "^0.3.31",
-    "@types/node": "^26.6.3",
-    "@vitest/coverage-v8": "^5.0.2",
-    "oxfmt": "^0.70.0",
-    "oxlint": "^1.85.0",
+    "@types/node": "^26.6.4",
+    "@vitest/coverage-v8": "^5.0.3",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
     "oxlint-tsgolint": "^7.0.2003",
-    "rolldown": "^1.2.11",
+    "rolldown": "^1.2.12",
     "rolldown-plugin-dts": "^0.28.6",
     "typescript": "^7.0.2",
-    "vite": "^8.3.1",
+    "vite": "^8.3.2",
     "vitest": "^5.0.0"
   },
   "peerDependencies": {
