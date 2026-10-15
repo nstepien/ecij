@@ -5,11 +5,11 @@
 [![Rolldown compatibility](https://registry.vite.dev/api/badges?package=ecij&tool=rolldown)](https://registry.vite.dev/plugins?q=ecij)
 [![CI](https://github.com/nstepien/ecij/actions/workflows/ci.yml/badge.svg)](https://github.com/nstepien/ecij/actions/workflows/ci.yml)
 
-ecij (**E**xtract **C**SS-**i**n-**J**S) is a zero-runtime CSS-in-JS plugin for [Rolldown](https://rolldown.rs/) and [Vite](https://vite.dev/).
+ecij (**E**xtract **C**SS-**i**n-**J**S) is a zero-runtime CSS-in-JS plugin for [Vite](https://vite.dev/), [tsdown](https://tsdown.dev/), and [Rolldown](https://rolldown.rs/).
 
 It achieves this via static analysis by using [oxc-parser](https://www.npmjs.com/package/oxc-parser), so it is limited to static expressions. The plugin will ignore dynamic or complex expressions.
 
-The plugin does not process the CSS in any way whatsoever. It is merely output in virtual CSS files for Rolldown and Vite to handle. Separate plugins may be used to process these virtual CSS files.
+The plugin does not process the CSS in any way whatsoever. It is merely output in virtual CSS files for the bundler to handle. Separate plugins may be used to process these virtual CSS files.
 
 ## Installation
 
@@ -17,7 +17,7 @@ The plugin does not process the CSS in any way whatsoever. It is merely output i
 npm install -D ecij
 ```
 
-The plugin is built on Rolldown's APIs, so `rolldown` is a required peer dependency. In a Vite project it is already part of the dependency tree — npm and pnpm resolve the peer to that same copy — but package managers that do not install peer dependencies automatically, such as Yarn, require it to be installed explicitly.
+The plugin is built on Rolldown's APIs, so `rolldown` is a required peer dependency. In Vite and tsdown projects it is already part of the dependency tree — npm and pnpm resolve the peer to that same copy — but package managers that do not install peer dependencies automatically, such as Yarn, require it to be installed explicitly.
 
 ## Usage
 
@@ -77,35 +77,11 @@ const myButtonClassname = 'css-1d2c3b4a';
 
 ## Setup
 
-In `rolldown.config.ts`:
+Add the plugin to `vite.config.ts`, `tsdown.config.ts`, or `rolldown.config.ts`:
 
 ```ts
 import { ecij } from 'ecij/plugin';
-import { defineConfig } from 'rolldown';
-
-export default defineConfig({
-  // ...
-  plugins: [ecij()],
-});
-```
-
-In `vite.config.ts`:
-
-```ts
-import { ecij } from 'ecij/plugin';
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-  // ...
-  plugins: [ecij()],
-});
-```
-
-In `tsdown.config.ts`:
-
-```ts
-import { ecij } from 'ecij/plugin';
-import { defineConfig } from 'tsdown';
+import { defineConfig } from 'vite'; // or 'tsdown' or 'rolldown'
 
 export default defineConfig({
   // ...
