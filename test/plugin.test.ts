@@ -1,10 +1,10 @@
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
-import type { OutputAsset, RolldownLog } from 'rolldown';
+import { rolldown, type OutputAsset, type RolldownLog } from 'rolldown';
 import { build, type BuildEnvironmentOptions } from 'vite';
 import { assert, expect, test } from 'vitest';
 
-const normalize = (path: string) => path.replace(/^.*\/test\//, 'test/');
+const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
 
 // Helper to run a vite build with the ecij plugin
 async function buildWithPlugin(
@@ -182,6 +182,91 @@ test('emit sourcemaps for transformed modules without sourcemap warnings', async
     column: 27,
     name: null,
   });
+});
+
+// Vite does not forward `meta.magicString` to transform hooks, so only a plain Rolldown build
+// exercises the native magic string path, where Rolldown applies the edits and the sourcemap
+test('apply edits through the native magic string in plain Rolldown builds', async () => {
+  const logs: RolldownLog[] = [];
+  let receivedMagicString = false;
+
+  const bundle = await rolldown({
+    input: './test/fixtures/comprehensive.input.ts',
+    plugins: [
+      {
+        name: 'detect-magic-string',
+        transform(_code, id, meta) {
+          if (id.endsWith('comprehensive.input.ts')) {
+            receivedMagicString = meta.magicString !== undefined;
+          }
+        },
+      },
+      ecij(),
+      {
+        // Rolldown no longer bundles CSS, so stand in for a CSS plugin
+        name: 'stylesheets-as-side-effects',
+        transform: {
+          filter: { id: /\.css$/ },
+          handler() {
+            return { code: '', moduleType: 'js', moduleSideEffects: 'no-treeshake' };
+          },
+        },
+      },
+    ],
+    onLog(_level, log) {
+      logs.push(log);
+    },
+  });
+  const { output } = await bundle.generate({ format: 'es', sourcemap: true });
+  const [chunk] = output;
+
+  expect(receivedMagicString).toBe(true);
+  expect(logs).toMatchInlineSnapshot(`[]`);
+  expect(chunk.code).toMatchInlineSnapshot(`
+    "//#region test/fixtures/comprehensive.input.ts
+    const buttonClass = (() => "css-39ccb25d")();
+    const primaryClass = (() => "css-7a998145")();
+    const secondaryClass = (() => "css-6c03a746")();
+    const importedClass = (() => "css-4f842925")();
+    const nestedClass = (() => "css-234be203")();
+    function getButtonClass() {
+    	return (() => "css-6c89bbd7")();
+    }
+    //#endregion
+    export { buttonClass, getButtonClass, importedClass, nestedClass, primaryClass, secondaryClass };
+
+    //# sourceMappingURL=comprehensive.input.js.map"
+  `);
+
+  // The prepended stylesheet imports keep the extracted CSS in the bundle
+  expect(chunk.moduleIds.map(normalize)).toMatchInlineSnapshot(`
+    [
+      "test/fixtures/imported-style.ts.52184b2c.css",
+      "test/fixtures/comprehensive.input.ts.adf2ce56.css",
+      "test/fixtures/imported-style.ts",
+      "test/fixtures/comprehensive.input.ts",
+    ]
+  `);
+
+  assert(chunk.map != null, 'Expected the JS chunk to have a sourcemap');
+
+  const generatedLines = chunk.code.split('\n');
+  const generatedLine = generatedLines.findIndex((line) => line.includes('"css-39ccb25d"'));
+  expect(generatedLine).not.toBe(-1);
+
+  const originalPosition = originalPositionFor(new TraceMap(chunk.map as EncodedSourceMap), {
+    line: generatedLine + 1,
+    column: generatedLines[generatedLine]!.indexOf('"css-39ccb25d"'),
+  });
+
+  expect(originalPosition).toMatchInlineSnapshot(`
+    {
+      "column": 27,
+      "line": 7,
+      "name": null,
+      "source": "../test/fixtures/comprehensive.input.ts",
+    }
+  `);
 });
 
 test('generate hash based on file path relative to root and file name to avoid name conflicts', async () => {

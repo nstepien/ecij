@@ -104,7 +104,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
   const parsedFileInfoCache = new Map<string, ParsedFileInfo>();
 
   /**
-   * Generated CSS module IDs for each source file, used to mark modules as having side effects.
+   * Generated CSS module IDs for each source file, imported ahead of the stylesheet of any
+   * module that interpolates its class names, to preserve the cascade order.
    *
    * Key: module id, Value: CSS module id
    */
@@ -720,13 +721,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
           include: makeIdFiltersToMatchWithQuery(include),
           exclude: makeIdFiltersToMatchWithQuery(exclude),
         },
+        // Skip files that do not reference 'ecij' before the handler is called
+        code: 'ecij',
       },
       async handler(code, id, meta) {
-        // Check if the file references 'ecij'
-        if (!code.includes('ecij')) {
-          return null;
-        }
-
         // Remove query parameters from the ID
         const queryIndex = id.indexOf('?');
         const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
@@ -774,6 +772,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
           magicString.prepend(importStatements.join(''));
         }
 
+        // Rolldown provides a magic string and generates the sourcemap natively. Vite does not
+        // forward it to plugins, in build or dev, so every Vite user goes through the fallback.
         if (meta.magicString) {
           return { code: meta.magicString };
         }
