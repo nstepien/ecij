@@ -6,6 +6,14 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    # Dependabot waits 3 days before proposing a new release by default. Consumers get new
+    # Rolldown and Vite releases right away within ecij's peer ranges, so propose those
+    # immediately to catch compatibility issues first. Dev-only tooling keeps the delay as a
+    # supply chain safeguard.
+    cooldown:
+      exclude:
+        - 'rolldown'
+        - 'vite'
     groups:
       dependencies:
         patterns:
