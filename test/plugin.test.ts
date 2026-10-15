@@ -207,7 +207,7 @@ test('support plain Rolldown builds', async () => {
       logs.push(log);
     },
   });
-  const { output } = await bundle.generate({ format: 'es', sourcemap: true });
+  const { output } = await bundle.generate({ sourcemap: true });
   const [chunk] = output;
 
   expect(logs).toMatchInlineSnapshot(`[]`);
