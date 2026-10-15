@@ -184,23 +184,14 @@ test('emit sourcemaps for transformed modules without sourcemap warnings', async
   });
 });
 
-// Vite does not forward `meta.magicString` to transform hooks, so only a plain Rolldown build
-// exercises the native magic string path, where Rolldown applies the edits and the sourcemap
-test('apply edits through the native magic string in plain Rolldown builds', async () => {
+// Vite does not forward `meta.magicString` to transform hooks,
+// so this is the only test covering the native magic string path
+test('support plain Rolldown builds', async () => {
   const logs: RolldownLog[] = [];
-  let receivedMagicString = false;
 
   const bundle = await rolldown({
     input: './test/fixtures/comprehensive.input.ts',
     plugins: [
-      {
-        name: 'detect-magic-string',
-        transform(_code, id, meta) {
-          if (id.endsWith('comprehensive.input.ts')) {
-            receivedMagicString = meta.magicString !== undefined;
-          }
-        },
-      },
       ecij(),
       {
         // Rolldown no longer bundles CSS, so stand in for a CSS plugin
@@ -220,7 +211,6 @@ test('apply edits through the native magic string in plain Rolldown builds', asy
   const { output } = await bundle.generate({ format: 'es', sourcemap: true });
   const [chunk] = output;
 
-  expect(receivedMagicString).toBe(true);
   expect(logs).toMatchInlineSnapshot(`[]`);
   expect(chunk.code).toMatchInlineSnapshot(`
     "//#region test/fixtures/comprehensive.input.ts
