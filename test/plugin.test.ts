@@ -1,7 +1,7 @@
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
 import { rolldown, type OutputAsset, type RolldownLog } from 'rolldown';
-import { build, type BuildEnvironmentOptions } from 'vite';
+import { build, createServer, type BuildEnvironmentOptions, type DevEnvironment } from 'vite';
 import { expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
@@ -67,6 +67,26 @@ async function buildWithPlugin(
     logs,
   };
 }
+
+// Helper to run requests against a Vite dev server with the ecij plugin
+async function withDevServer(callback: (client: DevEnvironment) => Promise<void>) {
+  const server = await createServer({
+    configFile: false,
+    logLevel: 'silent',
+    plugins: [ecij()],
+    server: { middlewareMode: true, ws: false },
+    appType: 'custom',
+  });
+
+  try {
+    await callback(server.environments.client);
+  } finally {
+    await server.close();
+  }
+}
+
+const getStylesheetImports = (code: string) =>
+  code.split('\n').filter((line) => line.startsWith('import "') && line.endsWith('.css";'));
 
 test('comprehensive CSS-in-JS patterns', async () => {
   const fixturePath = './test/fixtures/comprehensive.input.ts';
@@ -256,6 +276,38 @@ test('support plain Rolldown builds', async () => {
       "source": "../test/fixtures/comprehensive.input.ts",
     }
   `);
+});
+
+test('import the stylesheets of interpolated class names in the Vite dev server', async () => {
+  await withDevServer(async (client) => {
+    const result = await client.transformRequest('/test/fixtures/comprehensive.input.ts');
+    const stylesheetImports = getStylesheetImports(result!.code);
+
+    // The stylesheet of the imported class name comes first, to preserve the cascade
+    expect(stylesheetImports).toMatchInlineSnapshot(`
+      [
+        "import "/test/fixtures/imported-style.ts.52184b2c.css";",
+        "import "/test/fixtures/comprehensive.input.ts.adf2ce56.css";",
+      ]
+    `);
+
+    // It is served even though its module has not been requested yet
+    const stylesheet = await client.transformRequest(stylesheetImports[0]!.slice(8, -2));
+    expect(stylesheet!.code).toContain('red class');
+  });
+});
+
+test('import the stylesheets of modules that interpolate each other in the Vite dev server', async () => {
+  await withDevServer(async (client) => {
+    const result = await client.transformRequest('/test/fixtures/cycle-a.ts');
+
+    expect(getStylesheetImports(result!.code)).toMatchInlineSnapshot(`
+      [
+        "import "/test/fixtures/cycle-b.ts.f3186206.css";",
+        "import "/test/fixtures/cycle-a.ts.14c8c716.css";",
+      ]
+    `);
+  });
 });
 
 test('generate hash based on file path relative to root and file name to avoid name conflicts', async () => {

@@ -143,6 +143,38 @@ export function ecij(configuration?: Configuration | null): Plugin {
   }
 
   /**
+   * Registers the CSS extracted from a module as a virtual stylesheet, and returns its ID.
+   */
+  function registerStylesheet(moduleId: string, cssContent: string): string {
+    // A hash of the CSS content is part of the ID to make HMR work.
+    // For example, /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
+    const cssModuleId = `${moduleId}.${hashText(cssContent)}.css`;
+
+    extractedCssPerFile.set(cssModuleId, cssContent);
+    stylesheetImportPerFile.set(moduleId, cssModuleId);
+
+    return cssModuleId;
+  }
+
+  /**
+   * Extracts the stylesheet of an imported module from its source, and returns its ID.
+   *
+   * An importer can need the stylesheet of a module before that module has been transformed:
+   * Vite's dev server only runs the transform hook of a module loaded through `this.load()` when
+   * a plugin's `load` hook returned its code, and loading a module whose transform waits for the
+   * importer is skipped (see `isWaitingFor`). Its transform registers the same ID later.
+   */
+  async function extractStylesheet(
+    context: TransformPluginContext,
+    moduleId: string,
+  ): Promise<string | undefined> {
+    const code = await context.fs.readFile(moduleId, { encoding: 'utf8' });
+    const { cssContent } = await extractCssFromCode(context, code, moduleId, {}, true);
+
+    return cssContent === '' ? undefined : registerStylesheet(moduleId, cssContent);
+  }
+
+  /**
    * Parses a file and extracts all relevant information in a single pass.
    */
   async function parseFile(
@@ -502,12 +534,16 @@ export function ecij(configuration?: Configuration | null): Plugin {
    * Extracts CSS from template literals in the source code using AST parsing.
    *
    * Supports interpolations of strings and numbers, both local and imported.
+   *
+   * With `onDemand`, extracts the CSS of a module outside of its own transform: imported modules
+   * are not loaded, their stylesheets are not collected, and warnings are left to that transform.
    */
   async function extractCssFromCode(
     context: TransformPluginContext,
     code: string,
     filePath: string,
     meta: { magicString?: RolldownMagicString },
+    onDemand = false,
   ): Promise<{
     magicString: RolldownMagicString | null;
     cssContent: string;
@@ -553,8 +589,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
           // Loading a module whose transform waits for this one would never finish, which
           // happens when modules interpolate each other's class names. Its transform has
-          // already parsed it, so its exported values are cached either way.
-          if (!isWaitingFor(id, filePath)) {
+          // already parsed it, so its exported values are cached either way. An on-demand
+          // extraction only needs those values, so it never waits for another transform.
+          if (!onDemand && !isWaitingFor(id, filePath)) {
             pendingLoads.set(filePath, id);
 
             try {
@@ -565,12 +602,20 @@ export function ecij(configuration?: Configuration | null): Plugin {
             }
           }
 
-          const { exportNameToValueMap } = await parseFile(context, id);
+          const { declarations, exportNameToValueMap } = await parseFile(context, id);
 
           if (exportNameToValueMap.has(imported)) {
-            if (stylesheetImportPerFile.has(id)) {
-              stylesheetDependencies.add(stylesheetImportPerFile.get(id)!);
+            if (!onDemand) {
+              // The imported module may not have been transformed yet, see `extractStylesheet`
+              const stylesheetId =
+                stylesheetImportPerFile.get(id) ??
+                (declarations.length === 0 ? undefined : await extractStylesheet(context, id));
+
+              if (stylesheetId !== undefined) {
+                stylesheetDependencies.add(stylesheetId);
+              }
             }
+
             return exportNameToValueMap.get(imported)!;
           }
         }
@@ -641,26 +686,30 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
             if (resolvedValue === undefined) {
               // Cannot resolve - skip this entire css`` block
-              context.warn(
-                {
-                  pluginCode: 'UNRESOLVED_INTERPOLATION',
-                  message: `skipped CSS extraction — could not resolve "${expression.name}" to a static string or number`,
-                },
-                expression.start,
-              );
+              if (!onDemand) {
+                context.warn(
+                  {
+                    pluginCode: 'UNRESOLVED_INTERPOLATION',
+                    message: `skipped CSS extraction — could not resolve "${expression.name}" to a static string or number`,
+                  },
+                  expression.start,
+                );
+              }
               allResolved = false;
               break;
             }
           } else {
             // Complex expression - skip this entire css`` block
-            context.warn(
-              {
-                pluginCode: 'COMPLEX_INTERPOLATION',
-                message:
-                  'skipped CSS extraction — interpolation is not a static string, number, or identifier',
-              },
-              expression.start,
-            );
+            if (!onDemand) {
+              context.warn(
+                {
+                  pluginCode: 'COMPLEX_INTERPOLATION',
+                  message:
+                    'skipped CSS extraction — interpolation is not a static string, number, or identifier',
+                },
+                expression.start,
+              );
+            }
             allResolved = false;
             break;
           }
@@ -776,16 +825,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
         // Avoid outputting empty CSS modules
         if (cssContent !== '') {
-          // Generate CSS module ID for this file
-          // A hash of the CSS content is created to make HMR work
-          // Use the original file path with a .css extension
-          // For example, /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
-          const hash = hashText(cssContent);
-          const cssModuleId = `${cleanId}.${hash}.css`;
-
-          // Store the CSS extractions for this file
-          extractedCssPerFile.set(cssModuleId, cssContent);
-          stylesheetImportPerFile.set(id, cssModuleId);
+          const cssModuleId = registerStylesheet(cleanId, cssContent);
 
           const importStatements: string[] = [];
 
