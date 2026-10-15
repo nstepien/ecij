@@ -55,6 +55,8 @@ The plugin implements three Rolldown lifecycle hooks:
 
 `resolveId` and `load` filter on the generated ID pattern (`STYLESHEET_ID_REGEX`), so their handlers never run for other modules.
 
+To resolve a class name imported from another module, `transform` waits for `this.load()` of that module. Modules that interpolate each other's class names would wait for each other forever, so it skips loading a module whose transform is already waiting for the current one (`isWaitingFor`) and reads that module's cached parse instead.
+
 ## Package Metadata
 
 `package.json` doubles as the plugin's entry in the [Vite Plugin Registry](https://registry.vite.dev/), which harvests it from npm. Keep these fields accurate:

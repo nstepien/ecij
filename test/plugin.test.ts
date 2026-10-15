@@ -1579,3 +1579,28 @@ test('classPrefix setting', async () => {
   `);
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
+
+// Each module's transform waits for the modules whose class names it interpolates to be loaded,
+// so two modules that interpolate each other's class names used to wait on each other forever
+test("build modules that interpolate each other's class names", async () => {
+  const result = await buildWithPlugin('./test/fixtures/cycle-a.ts');
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region test/fixtures/cycle-a.ts
+    var aClass = (() => "css-61fbc555")();
+    //#endregion
+    export { aClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-6df9125c {
+      &.css-61fbc555 {
+        color: blue;
+      }
+    }.css-61fbc555 {
+      &.css-6df9125c {
+        color: red;
+      }
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
