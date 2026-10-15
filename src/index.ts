@@ -651,10 +651,17 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // so an accurate sourcemap can be generated for the edits
     const magicString = meta.magicString ?? new RolldownMagicString(code);
 
-    // Emit each class name as a template literal instead of a string literal
-    // to prevent issues with tree-shaking (see inlineConst tests)
+    // Emit each class name as an IIFE instead of a literal to prevent issues with tree-shaking
+    // (see inlineConst tests): `optimization.inlineConst` inlines string and template literal
+    // constants, and once all used exports of a `sideEffects: false` module are inlined, the
+    // module is dropped along with its stylesheet import. Rolldown does not evaluate calls as
+    // constants, yet still treats the IIFE as side-effect-free, and minifiers fold it back to a
+    // plain string. Do not annotate it with `@__PURE__`: terser does not inline annotated IIFEs.
+    // Related upstream issues (Vite's own CSS Modules lose their CSS the same way):
+    // https://github.com/vitejs/vite/issues/22344
+    // https://github.com/rolldown/rolldown/issues/8100
     for (const { start, end, className } of replacements) {
-      magicString.overwrite(start, end, '`' + className + '`');
+      magicString.overwrite(start, end, `(() => ${JSON.stringify(className)})()`);
     }
 
     // Sort CSS extractions by source position to maintain original order
