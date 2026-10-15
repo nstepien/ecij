@@ -2,7 +2,7 @@ import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewel
 import { ecij, type Configuration } from 'ecij/plugin';
 import { rolldown, type OutputAsset, type RolldownLog } from 'rolldown';
 import { build, type BuildEnvironmentOptions } from 'vite';
-import { assert, expect, test } from 'vitest';
+import { expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
 
@@ -158,10 +158,9 @@ test('emit sourcemaps for transformed modules without sourcemap warnings', async
   // No SOURCEMAP_BROKEN warnings should be emitted for the plugin's transforms
   expect(logs).toMatchInlineSnapshot(`[]`);
 
-  assert(map != null, 'Expected the JS chunk to have a sourcemap');
-
-  expect(map.sources).toStrictEqual(['../test/fixtures/comprehensive.input.ts']);
-  expect(map.mappings).not.toBe('');
+  expect(map, 'JS chunk sourcemap').toBeTruthy();
+  expect(map!.sources).toStrictEqual(['../test/fixtures/comprehensive.input.ts']);
+  expect(map!.mappings).not.toBe('');
 
   // The generated class name string should map back to the position of
   // the css`` tagged template it replaced in the original source
@@ -238,7 +237,7 @@ test('support plain Rolldown builds', async () => {
     ]
   `);
 
-  assert(chunk.map != null, 'Expected the JS chunk to have a sourcemap');
+  expect(chunk.map, 'JS chunk sourcemap').toBeTruthy();
 
   const generatedLines = chunk.code.split('\n');
   const generatedLine = generatedLines.findIndex((line) => line.includes('"css-39ccb25d"'));
