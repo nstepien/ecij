@@ -26,6 +26,7 @@ Source input:
 ```ts
 /* main.ts */
 import { css } from 'ecij';
+
 import { redClassname } from './styles';
 
 const myButtonClassname = css`
@@ -79,8 +80,8 @@ const myButtonClassname = `css-1d2c3b4a`;
 In `rolldown.config.ts`:
 
 ```ts
-import { defineConfig } from 'rolldown';
 import { ecij } from 'ecij/plugin';
+import { defineConfig } from 'rolldown';
 
 export default defineConfig({
   // ...
@@ -91,8 +92,8 @@ export default defineConfig({
 In `vite.config.ts`:
 
 ```ts
-import { defineConfig } from 'vite';
 import { ecij } from 'ecij/plugin';
+import { defineConfig } from 'vite';
 
 export default defineConfig({
   // ...
