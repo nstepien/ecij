@@ -42,7 +42,7 @@ export interface Configuration {
 }
 
 interface Scope {
-  /** `undefined` means "declared but value unknown at build time" (e.g. function params). */
+  /** `undefined` means "declared but value unknown at build time" (like function params). */
   identifiers: Map<string, string | undefined>;
   parent: Scope | null;
   /** `true` for function/module/static-block scopes (where `var` bindings land). */
@@ -62,12 +62,15 @@ interface ParsedFileInfo {
   readonly exportNameToValueMap: ReadonlyMap<string, string>;
 }
 
-// allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, .tsx files
+// allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, and .tsx files
 const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 
 // disallow /node_modules/ and .d.ts files
 const NODE_MODULES_REGEX = /\/node_modules\//;
 const D_TS_FILE_REGEX = /\.d\.ts$/;
+
+// match the generated stylesheet IDs, like /src/Button.tsx.1a2b3c4d.css
+const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 
 // Get the project root directory
 const PROJECT_ROOT = cwd();
@@ -104,7 +107,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
   const parsedFileInfoCache = new Map<string, ParsedFileInfo>();
 
   /**
-   * Generated CSS module IDs for each source file, used to mark modules as having side effects.
+   * Generated CSS module IDs for each source file, imported ahead of the stylesheet of any
+   * module that interpolates its class names, to preserve the cascade order.
    *
    * Key: module id, Value: CSS module id
    */
@@ -113,7 +117,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
   /**
    * Extracted CSS content per source file.
    *
-   * Key: virtual module ID, Value: css content
+   * Key: virtual module ID, Value: CSS content
    */
   const extractedCssPerFile = new Map<string, string>();
 
@@ -126,8 +130,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     code?: string,
   ): Promise<ParsedFileInfo> {
     // The code loaded from `readFile` might not be identical
-    // to the code passed in after it has been processed by other plugins,
-    // as such we cannot rely on the position of declarations being the same,
+    // to the code passed in after it has been processed by other plugins;
+    // as such, we cannot rely on the position of declarations being the same,
     // and the new code should be parsed.
     if (code === undefined && parsedFileInfoCache.has(filePath)) {
       return parsedFileInfoCache.get(filePath)!;
@@ -352,8 +356,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
       },
       'ArrowFunctionExpression:exit': popScope,
 
-      // For statements: create a scope for loop variable declarations,
-      // merge with the body's BlockStatement
+      // For statements: create a scope for loop variable declarations
+      // and merge with the body's BlockStatement
       ForStatement(node) {
         pushScope();
         if (node.body.type === 'BlockStatement') {
@@ -379,13 +383,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
       'ForOfStatement:exit': popScope,
 
       // Switch statements create a scope for case-level declarations.
-      // SwitchCase consequent is Array<Statement>, not a BlockStatement, so no merge needed.
+      // SwitchCase consequent is Array<Statement>, not a BlockStatement, so no merge is needed.
       SwitchStatement() {
         pushScope();
       },
       'SwitchStatement:exit': popScope,
 
-      // Catch clauses: create a scope for the catch parameter, merge with body BlockStatement
+      // Catch clauses: create a scope for the catch parameter and merge with the body's BlockStatement
       CatchClause(node) {
         pushScope();
         if (node.param !== null) {
@@ -411,7 +415,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
       },
       'ClassExpression:exit': popScope,
 
-      // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement")
+      // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement").
       // They are function-scoped for `var` declarations.
       StaticBlock() {
         pushScope(true);
@@ -505,7 +509,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Helper to resolve a value from an identifier, walking up the scope chain
     async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
       if (scope.identifiers.has(identifierName)) {
-        // May return undefined for declarations with unknown values (e.g. function params),
+        // May return undefined for declarations with unknown values (like function params),
         // which stops the lookup and signals "can't resolve"
         return scope.identifiers.get(identifierName);
       }
@@ -695,23 +699,21 @@ export function ecij(configuration?: Configuration | null): Plugin {
       extractedCssPerFile.clear();
     },
 
-    resolveId(id) {
-      // Claim the generated stylesheet IDs. They look like file paths but do not exist on
-      // disk, so without this they would fail to resolve before `load` ever sees them.
-      if (extractedCssPerFile.has(id)) {
-        return id;
-      }
-
-      return null;
+    resolveId: {
+      filter: { id: STYLESHEET_ID_REGEX },
+      handler(id) {
+        // Claim the generated stylesheet IDs. They look like file paths but do not exist on
+        // disk, so without this they would fail to resolve before `load` ever sees them.
+        return extractedCssPerFile.has(id) ? id : null;
+      },
     },
 
-    load(id) {
-      // Return the CSS content for extracted CSS modules
-      if (extractedCssPerFile.has(id)) {
-        return extractedCssPerFile.get(id)!;
-      }
-
-      return null;
+    load: {
+      filter: { id: STYLESHEET_ID_REGEX },
+      handler(id) {
+        // Return the CSS content for extracted CSS modules
+        return extractedCssPerFile.get(id) ?? null;
+      },
     },
 
     transform: {
@@ -720,13 +722,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
           include: makeIdFiltersToMatchWithQuery(include),
           exclude: makeIdFiltersToMatchWithQuery(exclude),
         },
+        // Skip files that do not reference 'ecij' before the handler is called
+        code: 'ecij',
       },
       async handler(code, id, meta) {
-        // Check if the file references 'ecij'
-        if (!code.includes('ecij')) {
-          return null;
-        }
-
         // Remove query parameters from the ID
         const queryIndex = id.indexOf('?');
         const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
@@ -743,12 +742,12 @@ export function ecij(configuration?: Configuration | null): Plugin {
           return null;
         }
 
-        // Avoid outputing empty CSS modules
+        // Avoid outputting empty CSS modules
         if (cssContent !== '') {
           // Generate CSS module ID for this file
           // A hash of the CSS content is created to make HMR work
-          // Use the original file path with .css extension
-          // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
+          // Use the original file path with a .css extension
+          // For example, /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
           const hash = hashText(cssContent);
           const cssModuleId = `${cleanId}.${hash}.css`;
 
@@ -774,6 +773,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
           magicString.prepend(importStatements.join(''));
         }
 
+        // Rolldown provides a magic string and generates the sourcemap natively. Vite does not
+        // forward it to plugins, in build or dev, so every Vite user goes through the fallback.
         if (meta.magicString) {
           return { code: meta.magicString };
         }

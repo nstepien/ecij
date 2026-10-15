@@ -6,6 +6,11 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    # Skip the default 3-day cooldown for peer dependencies to catch compatibility issues early
+    cooldown:
+      exclude:
+        - 'rolldown'
+        - 'vite'
     groups:
       dependencies:
         patterns:

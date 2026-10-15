@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 0.1.1, 0.2.0, 1.0.0)'
+        description: 'Version to release, like 0.1.1, 0.2.0, or 1.0.0'
         required: true
         type: string
 
@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: lts/*
