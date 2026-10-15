@@ -101,6 +101,20 @@ export default defineConfig({
 });
 ```
 
+In `tsdown.config.ts`:
+
+```ts
+import { ecij } from 'ecij/plugin';
+import { defineConfig } from 'tsdown';
+
+export default defineConfig({
+  // ...
+  plugins: [ecij()],
+});
+```
+
+tsdown also needs [`@tsdown/css`](https://tsdown.dev/options/css) to be installed to bundle the extracted CSS.
+
 ## Configuration
 
 The `ecij()` plugin accepts an optional configuration object:
