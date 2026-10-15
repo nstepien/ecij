@@ -7,9 +7,9 @@
 
 ecij (**E**xtract **C**SS-**i**n-**J**S) is a zero-runtime CSS-in-JS plugin for [Rolldown](https://rolldown.rs/) and [Vite](https://vite.dev/).
 
-It achieves this via static analysis by using [oxc-parser](https://www.npmjs.com/package/oxc-parser); as such, it is limited to static expressions. The plugin will ignore dynamic or complex expressions.
+It achieves this via static analysis by using [oxc-parser](https://www.npmjs.com/package/oxc-parser), so it is limited to static expressions. The plugin will ignore dynamic or complex expressions.
 
-The plugin does not process the CSS in any way whatsoever; it is merely output in virtual CSS files for Rolldown and Vite to handle. Separate plugins may be used to process these virtual CSS files.
+The plugin does not process the CSS in any way whatsoever. It is merely output in virtual CSS files for Rolldown and Vite to handle. Separate plugins may be used to process these virtual CSS files.
 
 ## Installation
 
@@ -17,7 +17,7 @@ The plugin does not process the CSS in any way whatsoever; it is merely output i
 npm install -D ecij
 ```
 
-The plugin is built on Rolldown's APIs, so `rolldown` is a required peer dependency. In a Vite project it is already part of the dependency tree — npm and pnpm resolve the peer to that same copy — but package managers that do not install peer dependencies automatically (e.g., Yarn) require it to be installed explicitly.
+The plugin is built on Rolldown's APIs, so `rolldown` is a required peer dependency. In a Vite project it is already part of the dependency tree — npm and pnpm resolve the peer to that same copy — but package managers that do not install peer dependencies automatically, such as Yarn, require it to be installed explicitly.
 
 ## Usage
 

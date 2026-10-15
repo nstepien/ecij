@@ -42,7 +42,7 @@ export interface Configuration {
 }
 
 interface Scope {
-  /** `undefined` means "declared but value unknown at build time" (e.g., function params). */
+  /** `undefined` means "declared but value unknown at build time" (like function params). */
   identifiers: Map<string, string | undefined>;
   parent: Scope | null;
   /** `true` for function/module/static-block scopes (where `var` bindings land). */
@@ -69,7 +69,7 @@ const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 const NODE_MODULES_REGEX = /\/node_modules\//;
 const D_TS_FILE_REGEX = /\.d\.ts$/;
 
-// match the generated stylesheet IDs, e.g., /src/Button.tsx.1a2b3c4d.css
+// match the generated stylesheet IDs, like /src/Button.tsx.1a2b3c4d.css
 const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 
 // Get the project root directory
@@ -509,7 +509,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Helper to resolve a value from an identifier, walking up the scope chain
     async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
       if (scope.identifiers.has(identifierName)) {
-        // May return undefined for declarations with unknown values (e.g., function params),
+        // May return undefined for declarations with unknown values (like function params),
         // which stops the lookup and signals "can't resolve"
         return scope.identifiers.get(identifierName);
       }
@@ -747,7 +747,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
           // Generate CSS module ID for this file
           // A hash of the CSS content is created to make HMR work
           // Use the original file path with a .css extension
-          // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
+          // For example, /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
           const hash = hashText(cssContent);
           const cssModuleId = `${cleanId}.${hash}.css`;
 

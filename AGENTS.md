@@ -36,7 +36,7 @@ node --run build
 node --run test
 ```
 
-CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compatible (e.g., path handling).
+CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compatible, especially path handling.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compati
 The plugin implements three Rolldown lifecycle hooks:
 
 1. **`transform`** — Parses source files with `parseSync` (oxc-parser), identifies `css` tagged template literals imported from `ecij`, extracts their CSS content, replaces them with generated class names, and injects a side-effect import for the virtual CSS module. The hook's `code` filter skips files that do not reference `ecij` before the handler runs. Edits are applied through `RolldownMagicString`: when Rolldown provides an instance via the hook's `meta` argument, it is mutated and returned directly so Rolldown generates the sourcemap natively; otherwise the hook returns the transformed code with a generated sourcemap. Only plain Rolldown builds provide one — Vite rebuilds `meta` to add its `ssr` flag, which drops Rolldown's lazily created `magicString` — so every Vite build and dev server goes through the fallback. Class names are emitted as **IIFEs** (`(() => "css-…")()`), not literals — `optimization.inlineConst` inlines string and template literal constants into their importers, which leaves the declaring module without a used export and gets it dropped along with its stylesheet under `sideEffects: false`. Rolldown's constant evaluation does not see through function calls, so the binding survives tree-shaking; Rolldown still treats the IIFE as side-effect-free, and minifiers (Oxc, esbuild, and terser) fold it back to a plain string. Do not annotate it with `@__PURE__` (terser does not inline annotated IIFEs), and do not simplify it without re-running the `inlineConst` tests. The comment above the replacement in `src/index.ts` links the upstream issues to revisit.
-2. **`resolveId`** — Claims the virtual CSS module IDs (e.g., `Button.tsx.<hash>.css`), which look like file paths but do not exist on disk.
+2. **`resolveId`** — Claims the virtual CSS module IDs, like `Button.tsx.<hash>.css`, which look like file paths but do not exist on disk.
 3. **`load`** — Returns the extracted CSS content for virtual CSS module IDs.
 
 `resolveId` and `load` filter on the generated ID pattern (`STYLESHEET_ID_REGEX`), so their handlers never run for other modules.
