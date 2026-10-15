@@ -46,15 +46,15 @@
   "devDependencies": {
     "@jridgewell/trace-mapping": "^0.3.31",
     "@types/node": "^26.6.5",
-    "@vitest/coverage-v8": "^5.0.3",
-    "oxfmt": "^0.72.0",
-    "oxlint": "^1.87.0",
+    "@vitest/coverage-v8": "^5.0.4",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0",
     "oxlint-tsgolint": "^7.0.2004",
-    "rolldown": "^1.2.13",
+    "rolldown": "^1.2.14",
     "rolldown-plugin-dts": "^0.28.8",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.4"
   },
   "peerDependencies": {
     "rolldown": "^1.2.0",
