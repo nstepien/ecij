@@ -133,13 +133,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
    * transforms it is waiting for.
    */
   function isWaitingFor(moduleId: string, targetId: string): boolean {
-    for (let id: string | undefined = moduleId; id !== undefined; id = pendingLoads.get(id)) {
-      if (id === targetId) {
-        return true;
-      }
+    if (moduleId === targetId) {
+      return true;
     }
 
-    return false;
+    const awaitedId = pendingLoads.get(moduleId);
+
+    return awaitedId !== undefined && isWaitingFor(awaitedId, targetId);
   }
 
   /**
@@ -725,7 +725,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     name: 'ecij',
 
     buildEnd() {
-      // Clear caches between builds
+      // Clear caches between builds (`pendingLoads` empties itself as each load settles)
       parsedFileInfoCache.clear();
       stylesheetImportPerFile.clear();
       extractedCssPerFile.clear();

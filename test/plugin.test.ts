@@ -1593,11 +1593,11 @@ test("build modules that interpolate each other's class names", async () => {
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-6df9125c {
-      &.css-61fbc555 {
+      .css-61fbc555 {
         color: blue;
       }
     }.css-61fbc555 {
-      &.css-6df9125c {
+      .css-6df9125c {
         color: red;
       }
     }/*$vite$:1*/"
