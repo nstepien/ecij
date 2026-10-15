@@ -53,6 +53,8 @@ The plugin implements three Rolldown lifecycle hooks:
 2. **`resolveId`** — Claims the virtual CSS module IDs (e.g., `Button.tsx.<hash>.css`), which look like file paths but do not exist on disk.
 3. **`load`** — Returns the extracted CSS content for virtual CSS module IDs.
 
+`resolveId` and `load` filter on the generated ID pattern (`STYLESHEET_ID_REGEX`), so their handlers never run for other modules.
+
 ## Package Metadata
 
 `package.json` doubles as the plugin's entry in the [Vite Plugin Registry](https://registry.vite.dev/), which harvests it from npm. Keep these fields accurate:

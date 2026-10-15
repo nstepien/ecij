@@ -69,6 +69,9 @@ const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 const NODE_MODULES_REGEX = /\/node_modules\//;
 const D_TS_FILE_REGEX = /\.d\.ts$/;
 
+// match the generated stylesheet IDs, e.g. /src/Button.tsx.1a2b3c4d.css
+const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
+
 // Get the project root directory
 const PROJECT_ROOT = cwd();
 
@@ -696,23 +699,21 @@ export function ecij(configuration?: Configuration | null): Plugin {
       extractedCssPerFile.clear();
     },
 
-    resolveId(id) {
-      // Claim the generated stylesheet IDs. They look like file paths but do not exist on
-      // disk, so without this they would fail to resolve before `load` ever sees them.
-      if (extractedCssPerFile.has(id)) {
-        return id;
-      }
-
-      return null;
+    resolveId: {
+      filter: { id: STYLESHEET_ID_REGEX },
+      handler(id) {
+        // Claim the generated stylesheet IDs. They look like file paths but do not exist on
+        // disk, so without this they would fail to resolve before `load` ever sees them.
+        return extractedCssPerFile.has(id) ? id : null;
+      },
     },
 
-    load(id) {
-      // Return the CSS content for extracted CSS modules
-      if (extractedCssPerFile.has(id)) {
-        return extractedCssPerFile.get(id)!;
-      }
-
-      return null;
+    load: {
+      filter: { id: STYLESHEET_ID_REGEX },
+      handler(id) {
+        // Return the CSS content for extracted CSS modules
+        return extractedCssPerFile.get(id) ?? null;
+      },
     },
 
     transform: {
