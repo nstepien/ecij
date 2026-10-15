@@ -59,7 +59,7 @@ export const nestedClass = css`
   }
 `;
 
-// Inline CSS (not assigned to variable)
+// Inline CSS (not assigned to a variable)
 export function getButtonClass() {
   return css`
     /* inline css */

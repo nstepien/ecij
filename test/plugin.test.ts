@@ -6,7 +6,7 @@ import { assert, expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
 
-// Helper to run a vite build with the ecij plugin
+// Helper to run a Vite build with the ecij plugin
 async function buildWithPlugin(
   entry: string,
   pluginOptions?: Configuration,
@@ -78,7 +78,7 @@ test('comprehensive CSS-in-JS patterns', async () => {
   // - Local variable interpolation
   // - Imported class name interpolation
   // - Nested interpolations
-  // - Inline CSS (not assigned to variable)
+  // - Inline CSS (not assigned to a variable)
   expect(result.js).toMatchInlineSnapshot(`
     "//#region test/fixtures/comprehensive.input.ts
     var buttonClass = (() => "css-39ccb25d")();

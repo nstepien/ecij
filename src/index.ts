@@ -42,7 +42,7 @@ export interface Configuration {
 }
 
 interface Scope {
-  /** `undefined` means "declared but value unknown at build time" (e.g. function params). */
+  /** `undefined` means "declared but value unknown at build time" (e.g., function params). */
   identifiers: Map<string, string | undefined>;
   parent: Scope | null;
   /** `true` for function/module/static-block scopes (where `var` bindings land). */
@@ -62,14 +62,14 @@ interface ParsedFileInfo {
   readonly exportNameToValueMap: ReadonlyMap<string, string>;
 }
 
-// allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, .tsx files
+// allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, and .tsx files
 const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 
 // disallow /node_modules/ and .d.ts files
 const NODE_MODULES_REGEX = /\/node_modules\//;
 const D_TS_FILE_REGEX = /\.d\.ts$/;
 
-// match the generated stylesheet IDs, e.g. /src/Button.tsx.1a2b3c4d.css
+// match the generated stylesheet IDs, e.g., /src/Button.tsx.1a2b3c4d.css
 const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 
 // Get the project root directory
@@ -117,7 +117,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
   /**
    * Extracted CSS content per source file.
    *
-   * Key: virtual module ID, Value: css content
+   * Key: virtual module ID, Value: CSS content
    */
   const extractedCssPerFile = new Map<string, string>();
 
@@ -130,8 +130,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     code?: string,
   ): Promise<ParsedFileInfo> {
     // The code loaded from `readFile` might not be identical
-    // to the code passed in after it has been processed by other plugins,
-    // as such we cannot rely on the position of declarations being the same,
+    // to the code passed in after it has been processed by other plugins;
+    // as such, we cannot rely on the position of declarations being the same,
     // and the new code should be parsed.
     if (code === undefined && parsedFileInfoCache.has(filePath)) {
       return parsedFileInfoCache.get(filePath)!;
@@ -356,8 +356,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
       },
       'ArrowFunctionExpression:exit': popScope,
 
-      // For statements: create a scope for loop variable declarations,
-      // merge with the body's BlockStatement
+      // For statements: create a scope for loop variable declarations
+      // and merge with the body's BlockStatement
       ForStatement(node) {
         pushScope();
         if (node.body.type === 'BlockStatement') {
@@ -383,13 +383,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
       'ForOfStatement:exit': popScope,
 
       // Switch statements create a scope for case-level declarations.
-      // SwitchCase consequent is Array<Statement>, not a BlockStatement, so no merge needed.
+      // SwitchCase consequent is Array<Statement>, not a BlockStatement, so no merge is needed.
       SwitchStatement() {
         pushScope();
       },
       'SwitchStatement:exit': popScope,
 
-      // Catch clauses: create a scope for the catch parameter, merge with body BlockStatement
+      // Catch clauses: create a scope for the catch parameter and merge with the body's BlockStatement
       CatchClause(node) {
         pushScope();
         if (node.param !== null) {
@@ -415,7 +415,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
       },
       'ClassExpression:exit': popScope,
 
-      // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement")
+      // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement").
       // They are function-scoped for `var` declarations.
       StaticBlock() {
         pushScope(true);
@@ -509,7 +509,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Helper to resolve a value from an identifier, walking up the scope chain
     async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
       if (scope.identifiers.has(identifierName)) {
-        // May return undefined for declarations with unknown values (e.g. function params),
+        // May return undefined for declarations with unknown values (e.g., function params),
         // which stops the lookup and signals "can't resolve"
         return scope.identifiers.get(identifierName);
       }
@@ -742,11 +742,11 @@ export function ecij(configuration?: Configuration | null): Plugin {
           return null;
         }
 
-        // Avoid outputing empty CSS modules
+        // Avoid outputting empty CSS modules
         if (cssContent !== '') {
           // Generate CSS module ID for this file
           // A hash of the CSS content is created to make HMR work
-          // Use the original file path with .css extension
+          // Use the original file path with a .css extension
           // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
           const hash = hashText(cssContent);
           const cssModuleId = `${cleanId}.${hash}.css`;
