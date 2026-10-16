@@ -768,8 +768,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     hotUpdate({ file, modules }) {
       // Vite reuses the transforms of the modules that import an edited module, only updating
       // their imports. Update the modules that interpolate its values as if they were edited,
-      // as their CSS may change, and the modules that interpolate their class names, as they
-      // import their stylesheets.
+      // as they import its stylesheet and their CSS may change, and the modules that interpolate
+      // their class names, as they import their stylesheets.
       const updatedModules = new Set(modules);
 
       for (const dependentId of dependentsPerFile.get(file) ?? []) {
