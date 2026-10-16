@@ -569,14 +569,16 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
           dependents.add(filePath);
 
+          // Wait for the imported module's transform, which registers the stylesheet imported
+          // below. Vite's dev server does not transform modules loaded this way, so there the
+          // stylesheet is only imported once that module has been transformed.
           // Loading a module whose transform waits for this one would never finish, which
-          // happens when modules interpolate each other's class names. Its transform has
-          // already parsed it, so its exported values are cached either way.
+          // happens when modules interpolate each other's class names. Its stylesheet is then
+          // not registered yet, but values come from the module's parse either way.
           if (!isWaitingFor(id, filePath)) {
             pendingLoads.set(filePath, id);
 
             try {
-              // populate the cache for the imported file
               await context.load(resolvedId);
             } finally {
               pendingLoads.delete(filePath);
