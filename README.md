@@ -1,19 +1,23 @@
 # ecij
 
 [![npm version](https://img.shields.io/npm/v/ecij)](https://www.npmjs.com/package/ecij)
+[![Vite compatibility](https://registry.vite.dev/api/badges?package=ecij&tool=vite)](https://registry.vite.dev/plugins?q=ecij)
+[![Rolldown compatibility](https://registry.vite.dev/api/badges?package=ecij&tool=rolldown)](https://registry.vite.dev/plugins?q=ecij)
 [![CI](https://github.com/nstepien/ecij/actions/workflows/ci.yml/badge.svg)](https://github.com/nstepien/ecij/actions/workflows/ci.yml)
 
-ecij (**E**xtract **C**SS-**i**n-**J**S) is a zero-runtime css-in-js plugin for [Rolldown](https://rolldown.rs/) and [Vite](https://vite.dev/).
+ecij (**E**xtract **C**SS-**i**n-**J**S) is a zero-runtime CSS-in-JS plugin for [Vite](https://vite.dev/), [tsdown](https://tsdown.dev/), and [Rolldown](https://rolldown.rs/).
 
-It achieves this via static analysis by using [oxc-parser](https://www.npmjs.com/package/oxc-parser), as such it is limited to static expressions. The plugin will ignore dynamic or complex expressions.
+It achieves this via static analysis by using [oxc-parser](https://www.npmjs.com/package/oxc-parser), so it is limited to static expressions. The plugin will ignore dynamic or complex expressions.
 
-The plugin does not process the CSS in any way whatsoever, it is merely output in virtual CSS files for Rolldown and Vite to handle. Separate plugins may be used to process these virtual CSS files.
+The plugin does not process the CSS in any way whatsoever. It is merely output in virtual CSS files for the bundler to handle. Separate plugins may be used to process these virtual CSS files.
 
 ## Installation
 
 ```bash
 npm install -D ecij
 ```
+
+The plugin is built on Rolldown's APIs, so `rolldown` is a required peer dependency. In Vite and tsdown projects it is already part of the dependency tree — npm and pnpm resolve the peer to that same copy — but package managers that do not install peer dependencies automatically, such as Yarn, require it to be installed explicitly.
 
 ## Usage
 
@@ -22,6 +26,7 @@ Source input:
 ```ts
 /* main.ts */
 import { css } from 'ecij';
+
 import { redClassname } from './styles';
 
 const myButtonClassname = css`
@@ -70,13 +75,13 @@ const myButtonClassname = 'css-1d2c3b4a';
 }
 ```
 
-## Set up
+## Setup
 
-In `rolldown.config.ts`:
+Add the plugin to `vite.config.ts`, `tsdown.config.ts`, or `rolldown.config.ts`:
 
 ```ts
-import { defineConfig } from 'rolldown';
 import { ecij } from 'ecij/plugin';
+import { defineConfig } from 'vite'; // or 'tsdown' or 'rolldown'
 
 export default defineConfig({
   // ...
@@ -84,17 +89,7 @@ export default defineConfig({
 });
 ```
 
-In `vite.config.ts`:
-
-```ts
-import { defineConfig } from 'vite';
-import { ecij } from 'ecij/plugin';
-
-export default defineConfig({
-  // ...
-  plugins: [ecij()],
-});
-```
+tsdown also needs [`@tsdown/css`](https://tsdown.dev/options/css) to be installed to bundle the extracted CSS.
 
 ## Configuration
 
@@ -103,23 +98,26 @@ The `ecij()` plugin accepts an optional configuration object:
 ```ts
 export interface Configuration {
   /**
-   * Include patterns for files to process.
-   * Can be a string, RegExp, or array of strings/RegExp.
-   * @default /\.[cm]?[jt]sx?$/
+   * Include patterns for files to process, matched against the module id.
+   *
+   * @default `/\.[cm]?[jt]sx?$/`
    */
   include?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
-   * Exclude patterns for files to skip.
-   * Can be a string, RegExp, or array of strings/RegExp.
-   * @default [/\/node_modules\//, /\.d\.ts$/]
+   * Exclude patterns for files to skip, matched against the module id.
+   *
+   * @default `[/\/node_modules\//, /\.d\.ts$/]`
    */
   exclude?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
    * Prefix for generated CSS class names.
-   * Should not be empty, as generated hashes may start with a digit, resulting in invalid CSS class names.
-   * @default 'css-'
+   *
+   * Should not be empty, as generated hashes may start with a digit, resulting in invalid CSS
+   * class names.
+   *
+   * @default `'css-'`
    */
   classPrefix?: string | undefined | null;
 }
@@ -156,33 +154,26 @@ shadows it, so its templates are left alone.
 
 ## Development
 
-### Building
-
 ```bash
+# Build the plugin
 npm run build
-```
 
-### Formatting
-
-```bash
+# Format the code
 npm run format
-```
 
-### Type Checking
+# Run the linter
+npm run lint
 
-```bash
+# Auto-fix lints
+npm run lint:fix
+
+# Type check
 npm run typecheck
-```
 
-### Running Tests
-
-The project uses **integration tests** with **inline snapshot testing** to validate transformations.
-
-```bash
 # Run tests once
 npm test
 
-# Update inline snapshots after intentional changes
+# Update test snapshots
 npm test -- -u
 ```
 

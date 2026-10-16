@@ -1,4 +1,6 @@
 /.claude
+/.vitest
 /coverage
 /dist
 /node_modules
+/test/fixtures/edits-*/

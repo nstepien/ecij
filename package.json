@@ -1,29 +1,26 @@
 {
+  "$schema": "https://raw.githubusercontent.com/vitejs/vite-plugin-registry/refs/heads/main/data/schema/extended-package-json.schema.json",
   "name": "ecij",
-  "version": "0.4.1",
-  "description": "Rolldown and Vite plugin to Extract CSS-in-JS",
+  "version": "0.5.0",
+  "description": "Zero-runtime CSS-in-JS for Rolldown and Vite: statically extracts css tagged template literals",
   "keywords": [
+    "css",
     "css-in-js",
+    "rolldown",
     "rolldown-plugin",
-    "vite-plugin"
+    "vite",
+    "vite-plugin",
+    "zero-runtime"
   ],
-  "homepage": "https://github.com/nstepien/ecij#readme",
-  "bugs": {
-    "url": "https://github.com/nstepien/ecij/issues"
-  },
   "license": "MIT",
   "author": "Nicolas Stepien",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/nstepien/ecij.git"
-  },
+  "repository": "github:nstepien/ecij",
   "files": [
     "dist",
     "index.d.ts"
   ],
   "type": "module",
   "sideEffects": false,
-  "main": "index.js",
   "exports": {
     ".": {
       "types": "./index.d.ts",
@@ -34,34 +31,45 @@
       "default": "./dist/index.js"
     }
   },
+  "publishConfig": {
+    "provenance": true
+  },
   "scripts": {
     "build": "rolldown -c",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
     "typecheck": "tsc --build",
     "test": "vitest run"
   },
   "devDependencies": {
     "@jridgewell/trace-mapping": "^0.3.31",
-    "@types/node": "^26.4.0",
-    "@vitest/coverage-v8": "^4.1.11",
-    "oxfmt": "^0.65.0",
-    "rolldown": "^1.2.6",
-    "rolldown-plugin-dts": "^0.28.3",
+    "@types/node": "^26.6.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0",
+    "oxlint-tsgolint": "^7.0.2004",
+    "rolldown": "^1.2.14",
+    "rolldown-plugin-dts": "^0.28.8",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "rolldown": "^1.2.0",
     "vite": "^8.2.0"
   },
   "peerDependenciesMeta": {
-    "rolldown": {
-      "optional": true
-    },
     "vite": {
       "optional": true
+    }
+  },
+  "compatiblePackages": {
+    "schemaVersion": 1,
+    "rollup": {
+      "type": "incompatible",
+      "reason": "Uses Rolldown-specific APIs"
     }
   }
 }

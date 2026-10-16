@@ -12,35 +12,42 @@ import type {
 import { RolldownMagicString, type Plugin, type TransformPluginContext } from 'rolldown';
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
 import { parseSync, Visitor } from 'rolldown/utils';
+import type { Plugin as VitePlugin } from 'vite';
 
+/**
+ * Options for the {@link ecij} plugin.
+ */
 export interface Configuration {
   /**
-   * Include patterns for files to process.
-   * Can be a string, RegExp, or array of strings/RegExp.
-   * @default /\.[cm]?[jt]sx?$/
+   * Include patterns for files to process, matched against the module id.
+   *
+   * @default `/\.[cm]?[jt]sx?$/`
    */
   include?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
-   * Exclude patterns for files to skip.
-   * Can be a string, RegExp, or array of strings/RegExp.
-   * @default [/\/node_modules\//, /\.d\.ts$/]
+   * Exclude patterns for files to skip, matched against the module id.
+   *
+   * @default `[/\/node_modules\//, /\.d\.ts$/]`
    */
   exclude?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
    * Prefix for generated CSS class names.
-   * Should not be empty, as generated hashes may start with a digit, resulting in invalid CSS class names.
-   * @default 'css-'
+   *
+   * Should not be empty, as generated hashes may start with a digit, resulting in invalid CSS
+   * class names.
+   *
+   * @default `'css-'`
    */
   classPrefix?: string | undefined | null;
 }
 
 interface Scope {
-  // undefined value means "declared but value unknown at build time" (e.g. function params)
+  /** `undefined` means "declared but value unknown at build time" (like function params). */
   identifiers: Map<string, string | undefined>;
   parent: Scope | null;
-  // true for function/module/static-block scopes (where `var` bindings land)
+  /** `true` for function/module/static-block scopes (where `var` bindings land). */
   isFunctionScope: boolean;
 }
 
@@ -76,12 +83,15 @@ interface ParsedFileInfo {
   readonly exportNameToValueMap: ReadonlyMap<string, string>;
 }
 
-// allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, .tsx files
+// allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, and .tsx files
 const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 
 // disallow /node_modules/ and .d.ts files
 const NODE_MODULES_REGEX = /\/node_modules\//;
 const D_TS_FILE_REGEX = /\.d\.ts$/;
+
+// match the generated stylesheet IDs, like /src/Button.tsx.1a2b3c4d.css
+const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 
 // Get the project root directory
 const PROJECT_ROOT = cwd();
@@ -98,23 +108,78 @@ function isBoundInScopeChain(name: string, scope: Scope): boolean {
   return false;
 }
 
-export function ecij(configuration?: Configuration | undefined | null): Plugin {
+/**
+ * Creates the plugin that extracts `css` tagged template literals into separate CSS files.
+ *
+ * The extracted CSS is emitted as virtual modules imported for their side effects, leaving
+ * Rolldown, Vite, and any CSS plugins to process and bundle it.
+ *
+ * @param configuration Overrides for the file filters and the generated class name prefix.
+ * @returns The Rolldown/Vite plugin.
+ * @example
+ * <caption>vite.config.ts</caption>
+ * ```ts
+ * import { defineConfig } from 'vite';
+ * import { ecij } from 'ecij/plugin';
+ *
+ * export default defineConfig({
+ *   plugins: [ecij()],
+ * });
+ * ```
+ * @see [ecij documentation](https://github.com/nstepien/ecij#readme)
+ */
+export function ecij(configuration?: Configuration | null): Plugin {
   const include = configuration?.include ?? JS_TS_FILE_REGEX;
   const exclude = configuration?.exclude ?? [NODE_MODULES_REGEX, D_TS_FILE_REGEX];
   const classPrefix = configuration?.classPrefix ?? 'css-';
 
   const parsedFileInfoCache = new Map<string, ParsedFileInfo>();
 
-  // Map to store generated CSS module IDs for each source file, used to mark modules as having side effects
-  // Key: module id, Value: CSS module id
+  /**
+   * Generated CSS module IDs for each source file, imported ahead of the stylesheet of any
+   * module that interpolates its class names, to preserve the cascade order.
+   *
+   * Key: module id, Value: CSS module id
+   */
   const stylesheetImportPerFile = new Map<string, string>();
 
-  // Map to store extracted CSS content per source file
-  // Key: virtual module ID, Value: css content
+  /**
+   * Extracted CSS content per source file.
+   *
+   * Key: virtual module ID, Value: CSS content
+   */
   const extractedCssPerFile = new Map<string, string>();
 
   /**
-   * Parses a file and extracts all relevant information in a single pass
+   * The modules whose CSS interpolates values exported by each module.
+   *
+   * Key: module id, Value: ids of the modules interpolating its values
+   */
+  const dependentsPerFile = new Map<string, Set<string>>();
+
+  /**
+   * The module that each running transform is waiting for through `this.load()`.
+   *
+   * Key: module id, Value: module id
+   */
+  const pendingLoads = new Map<string, string>();
+
+  /**
+   * Whether the transform of `moduleId` is waiting for `targetId`, directly or through the
+   * transforms it is waiting for.
+   */
+  function isWaitingFor(moduleId: string, targetId: string): boolean {
+    if (moduleId === targetId) {
+      return true;
+    }
+
+    const awaitedId = pendingLoads.get(moduleId);
+
+    return awaitedId !== undefined && isWaitingFor(awaitedId, targetId);
+  }
+
+  /**
+   * Parses a file and extracts all relevant information in a single pass.
    */
   async function parseFile(
     context: TransformPluginContext,
@@ -122,8 +187,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     code?: string,
   ): Promise<ParsedFileInfo> {
     // The code loaded from `readFile` might not be identical
-    // to the code passed in after it has been processed by other plugins,
-    // as such we cannot rely on the position of declarations being the same,
+    // to the code passed in after it has been processed by other plugins;
+    // as such, we cannot rely on the position of declarations being the same,
     // and the new code should be parsed.
     if (code === undefined && parsedFileInfoCache.has(filePath)) {
       return parsedFileInfoCache.get(filePath)!;
@@ -434,7 +499,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         }
       },
 
-      // Catch clauses: create a scope for the catch parameter, merge with body BlockStatement
+      // Catch clauses: create a scope for the catch parameter and merge with the body's BlockStatement
       CatchClause(node) {
         pushScope();
         if (node.param !== null) {
@@ -460,7 +525,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       },
       'ClassExpression:exit': popScope,
 
-      // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement")
+      // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement").
       // They are function-scoped for `var` declarations.
       StaticBlock() {
         pushScope(true);
@@ -531,8 +596,9 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
   }
 
   /**
-   * Extracts CSS from template literals in the source code using AST parsing
-   * Supports interpolations of strings and numbers (both local and imported)
+   * Extracts CSS from template literals in the source code using AST parsing.
+   *
+   * Supports interpolations of strings and numbers, both local and imported.
    */
   async function extractCssFromCode(
     context: TransformPluginContext,
@@ -561,7 +627,7 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // Helper to resolve a value from an identifier, walking up the scope chain
     async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
       if (scope.identifiers.has(identifierName)) {
-        // May return undefined for declarations with unknown values (e.g. function params),
+        // May return undefined for declarations with unknown values (like function params),
         // which stops the lookup and signals "can't resolve"
         return scope.identifiers.get(identifierName);
       }
@@ -580,10 +646,33 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
         const resolvedId = await context.resolve(source, filePath);
 
         if (resolvedId != null) {
-          // populate the cache for the imported file
-          await context.load(resolvedId);
-
           const { id } = resolvedId;
+
+          // Record the dependency so that editing the imported module updates this one
+          let dependents = dependentsPerFile.get(id);
+
+          if (dependents === undefined) {
+            dependents = new Set();
+            dependentsPerFile.set(id, dependents);
+          }
+
+          dependents.add(filePath);
+
+          // Wait for the imported module's transform, which registers the stylesheet imported
+          // below. Vite's dev server does not transform modules loaded this way, so there the
+          // stylesheet is only imported once that module has been transformed.
+          // Loading a module whose transform waits for this one would never finish, which
+          // happens when modules interpolate each other's class names. Its stylesheet is then
+          // not registered yet, but values come from the module's parse either way.
+          if (!isWaitingFor(id, filePath)) {
+            pendingLoads.set(filePath, id);
+
+            try {
+              await context.load(resolvedId);
+            } finally {
+              pendingLoads.delete(filePath);
+            }
+          }
 
           const { exportNameToValueMap } = await parseFile(context, id);
 
@@ -707,8 +796,17 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     // so an accurate sourcemap can be generated for the edits
     const magicString = meta.magicString ?? new RolldownMagicString(code);
 
+    // Emit each class name as an IIFE instead of a literal to prevent issues with tree-shaking
+    // (see inlineConst tests): `optimization.inlineConst` inlines string and template literal
+    // constants, and once all used exports of a `sideEffects: false` module are inlined, the
+    // module is dropped along with its stylesheet import. Rolldown does not evaluate calls as
+    // constants, yet still treats the IIFE as side-effect-free, and minifiers fold it back to a
+    // plain string. Do not annotate it with `@__PURE__`: terser does not inline annotated IIFEs.
+    // Related upstream issues (Vite's own CSS Modules lose their CSS the same way):
+    // https://github.com/vitejs/vite/issues/22344
+    // https://github.com/rolldown/rolldown/issues/8100
     for (const { start, end, className } of replacements) {
-      magicString.overwrite(start, end, `'${className}'`);
+      magicString.overwrite(start, end, `(() => ${JSON.stringify(className)})()`);
     }
 
     // Sort CSS extractions by source position to maintain original order
@@ -732,39 +830,63 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
     };
   }
 
-  return {
+  // Rolldown's plugin type does not include Vite's hooks, which Rolldown ignores
+  const plugin: Plugin & Pick<VitePlugin, 'hotUpdate'> = {
     name: 'ecij',
 
     buildEnd() {
-      // Clear caches between builds
+      // Clear caches between builds (`pendingLoads` empties itself as each load settles)
       parsedFileInfoCache.clear();
       stylesheetImportPerFile.clear();
       extractedCssPerFile.clear();
+      dependentsPerFile.clear();
     },
 
-    resolveId(id) {
-      // Ensure CSS modules are treated as having side effects
-      if (extractedCssPerFile.has(id)) {
-        return id;
-      }
+    watchChange(id) {
+      // The dev server keeps the caches until it closes. Forget the parse of the edited module
+      // and the stylesheets that change with it: its own, and those of the modules that
+      // interpolate its values. Keep their CSS, as cached transforms may still import it.
+      parsedFileInfoCache.delete(id);
+      stylesheetImportPerFile.delete(id);
 
-      // Ensure JS modules with CSS extractions are included,
-      // otherwise they may be tree-shaken away if
-      // all their exports are evaluated away
-      if (parsedFileInfoCache.has(id) && parsedFileInfoCache.get(id)!.declarations.length !== 0) {
-        return id;
+      for (const dependentId of dependentsPerFile.get(id) ?? []) {
+        stylesheetImportPerFile.delete(dependentId);
       }
-
-      return null;
     },
 
-    load(id) {
-      // Return the CSS content for extracted CSS modules
-      if (extractedCssPerFile.has(id)) {
-        return extractedCssPerFile.get(id)!;
+    hotUpdate({ file, modules }) {
+      // Vite reuses the transforms of the modules that import an edited module, only updating
+      // their imports. Update the modules that interpolate its values as if they were edited,
+      // as they import its stylesheet and their CSS may change, and the modules that interpolate
+      // their class names, as they import their stylesheets.
+      const updatedModules = new Set(modules);
+
+      for (const dependentId of dependentsPerFile.get(file) ?? []) {
+        for (const id of [dependentId, ...(dependentsPerFile.get(dependentId) ?? [])]) {
+          for (const moduleNode of this.environment.moduleGraph.getModulesByFile(id) ?? []) {
+            updatedModules.add(moduleNode);
+          }
+        }
       }
 
-      return null;
+      return [...updatedModules];
+    },
+
+    resolveId: {
+      filter: { id: STYLESHEET_ID_REGEX },
+      handler(id) {
+        // Claim the generated stylesheet IDs. They look like file paths but do not exist on
+        // disk, so without this they would fail to resolve before `load` ever sees them.
+        return extractedCssPerFile.has(id) ? id : null;
+      },
+    },
+
+    load: {
+      filter: { id: STYLESHEET_ID_REGEX },
+      handler(id) {
+        // Return the CSS content for extracted CSS modules
+        return extractedCssPerFile.get(id) ?? null;
+      },
     },
 
     transform: {
@@ -773,13 +895,10 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           include: makeIdFiltersToMatchWithQuery(include),
           exclude: makeIdFiltersToMatchWithQuery(exclude),
         },
+        // Skip files that do not reference 'ecij' before the handler is called
+        code: 'ecij',
       },
       async handler(code, id, meta) {
-        // Check if the file references 'ecij'
-        if (!code.includes('ecij')) {
-          return null;
-        }
-
         // Remove query parameters from the ID
         const queryIndex = id.indexOf('?');
         const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
@@ -796,12 +915,12 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           return null;
         }
 
-        // Avoid outputing empty CSS modules
+        // Avoid outputting empty CSS modules
         if (cssContent !== '') {
           // Generate CSS module ID for this file
           // A hash of the CSS content is created to make HMR work
-          // Use the original file path with .css extension
-          // e.g., /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
+          // Use the original file path with a .css extension
+          // For example, /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
           const hash = hashText(cssContent);
           const cssModuleId = `${cleanId}.${hash}.css`;
 
@@ -811,10 +930,10 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
 
           const importStatements: string[] = [];
 
-          // Include side-effect imports for modules from which class names were imported.
-          // Otherwise, the original imports may be treated as being free of side-effects,
-          // leading those imports to be omitted from the final bundle,
-          // along with their extracted CSS.
+          // Import the stylesheets of the modules whose class names were interpolated into
+          // the CSS above, ahead of this module's own. These statements are prepended to the
+          // file, so leaving them out would emit this module's CSS before the CSS it
+          // references, inverting the cascade.
           for (const id of stylesheetDependencies) {
             importStatements.push(`import ${JSON.stringify(id)};\n`);
           }
@@ -827,6 +946,8 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
           magicString.prepend(importStatements.join(''));
         }
 
+        // Rolldown provides a magic string and generates the sourcemap natively. Vite does not
+        // forward it to plugins, in build or dev, so every Vite user goes through the fallback.
         if (meta.magicString) {
           return { code: meta.magicString };
         }
@@ -838,4 +959,6 @@ export function ecij(configuration?: Configuration | undefined | null): Plugin {
       },
     },
   };
+
+  return plugin;
 }
