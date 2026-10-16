@@ -55,25 +55,28 @@ interface Declaration {
   className: string;
   node: TaggedTemplateExpression;
   hasInterpolations: boolean;
-  // Scope the template appears in, where its interpolations are resolved
+  /** Scope the template appears in, where its interpolations are resolved. */
   scope: Scope;
 }
 
-// A css`` template found while visiting a file. Whether its tag is shadowed is
-// only decided once the visit completes and every scope is fully populated.
+/**
+ * A css`` template found while visiting a file. Whether its tag is shadowed is only decided once
+ * the visit completes and every scope is fully populated.
+ */
 interface CssTagCandidate {
-  // Variable the template is assigned to, if any
+  /** Variable the template is assigned to, if any. */
   localName: string | undefined;
-  // Whether that variable is a `const` — the only kind of binding with a static
-  // value; a `let`/`var` may be reassigned, and a `var` is `undefined` until
-  // its declaration has run
+  /**
+   * Whether that variable is a `const`, the only kind of binding with a static value: a
+   * `let`/`var` may be reassigned, and a `var` is `undefined` until its declaration has run.
+   */
   isConst: boolean;
   node: TaggedTemplateExpression;
-  // Local name of the tag, a binding of ecij's `css`
+  /** Local name of the tag, a binding of ecij's `css`. */
   tagName: string;
-  // Scope the template appears in, where the tag and the interpolations are resolved
+  /** Scope the template appears in, where the tag and the interpolations are resolved. */
   scope: Scope;
-  // Scope `localName` is bound in (the function scope for `var` declarations)
+  /** Scope `localName` is bound in (the function scope for `var` declarations). */
   bindingScope: Scope;
 }
 
@@ -100,7 +103,7 @@ function hashText(text: string): string {
   return createHash('md5').update(text).digest('hex').slice(0, 8);
 }
 
-// True if `name` is bound anywhere along the scope chain (i.e. shadows imports).
+// True if `name` is bound anywhere along the scope chain, so it shadows imports.
 function isBoundInScopeChain(name: string, scope: Scope): boolean {
   for (let current: Scope | null = scope; current !== null; current = current.parent) {
     if (current.identifiers.has(name)) return true;
@@ -214,7 +217,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
     let currentScope = rootScope;
     // Kinds of the `VariableDeclaration`s being visited, innermost last. An
-    // initializer can itself contain declarations (e.g. a function body), so a
+    // initializer can itself contain declarations, like a function body, so a
     // single slot would be clobbered before the next declarator is visited.
     const variableDeclarationKinds: string[] = [];
 
