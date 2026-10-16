@@ -11,6 +11,7 @@ import type {
 import { RolldownMagicString, type Plugin, type TransformPluginContext } from 'rolldown';
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
 import { parseSync, Visitor } from 'rolldown/utils';
+import type { Plugin as VitePlugin } from 'vite';
 
 /**
  * Options for the {@link ecij} plugin.
@@ -120,6 +121,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
    * Key: virtual module ID, Value: CSS content
    */
   const extractedCssPerFile = new Map<string, string>();
+
+  /**
+   * The modules whose CSS interpolates values exported by each module.
+   *
+   * Key: module id, Value: ids of the modules interpolating its values
+   */
+  const dependentsPerFile = new Map<string, Set<string>>();
 
   /**
    * The module that each running transform is waiting for through `this.load()`.
@@ -551,14 +559,26 @@ export function ecij(configuration?: Configuration | null): Plugin {
         if (resolvedId != null) {
           const { id } = resolvedId;
 
+          // Record the dependency so that editing the imported module updates this one
+          let dependents = dependentsPerFile.get(id);
+
+          if (dependents === undefined) {
+            dependents = new Set();
+            dependentsPerFile.set(id, dependents);
+          }
+
+          dependents.add(filePath);
+
+          // Wait for the imported module's transform, which registers the stylesheet imported
+          // below. Vite's dev server does not transform modules loaded this way, so there the
+          // stylesheet is only imported once that module has been transformed.
           // Loading a module whose transform waits for this one would never finish, which
-          // happens when modules interpolate each other's class names. Its transform has
-          // already parsed it, so its exported values are cached either way.
+          // happens when modules interpolate each other's class names. Its stylesheet is then
+          // not registered yet, but values come from the module's parse either way.
           if (!isWaitingFor(id, filePath)) {
             pendingLoads.set(filePath, id);
 
             try {
-              // populate the cache for the imported file
               await context.load(resolvedId);
             } finally {
               pendingLoads.delete(filePath);
@@ -721,7 +741,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     };
   }
 
-  return {
+  // Rolldown's plugin type does not include Vite's hooks, which Rolldown ignores
+  const plugin: Plugin & Pick<VitePlugin, 'hotUpdate'> = {
     name: 'ecij',
 
     buildEnd() {
@@ -729,6 +750,37 @@ export function ecij(configuration?: Configuration | null): Plugin {
       parsedFileInfoCache.clear();
       stylesheetImportPerFile.clear();
       extractedCssPerFile.clear();
+      dependentsPerFile.clear();
+    },
+
+    watchChange(id) {
+      // The dev server keeps the caches until it closes. Forget the parse of the edited module
+      // and the stylesheets that change with it: its own, and those of the modules that
+      // interpolate its values. Keep their CSS, as cached transforms may still import it.
+      parsedFileInfoCache.delete(id);
+      stylesheetImportPerFile.delete(id);
+
+      for (const dependentId of dependentsPerFile.get(id) ?? []) {
+        stylesheetImportPerFile.delete(dependentId);
+      }
+    },
+
+    hotUpdate({ file, modules }) {
+      // Vite reuses the transforms of the modules that import an edited module, only updating
+      // their imports. Update the modules that interpolate its values as if they were edited,
+      // as they import its stylesheet and their CSS may change, and the modules that interpolate
+      // their class names, as they import their stylesheets.
+      const updatedModules = new Set(modules);
+
+      for (const dependentId of dependentsPerFile.get(file) ?? []) {
+        for (const id of [dependentId, ...(dependentsPerFile.get(dependentId) ?? [])]) {
+          for (const moduleNode of this.environment.moduleGraph.getModulesByFile(id) ?? []) {
+            updatedModules.add(moduleNode);
+          }
+        }
+      }
+
+      return [...updatedModules];
     },
 
     resolveId: {
@@ -818,4 +870,6 @@ export function ecij(configuration?: Configuration | null): Plugin {
       },
     },
   };
+
+  return plugin;
 }

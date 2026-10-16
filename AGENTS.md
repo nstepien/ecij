@@ -55,7 +55,9 @@ The plugin implements three Rolldown lifecycle hooks:
 
 `resolveId` and `load` filter on the generated ID pattern (`STYLESHEET_ID_REGEX`), so their handlers never run for other modules.
 
-To resolve a class name imported from another module, `transform` waits for `this.load()` of that module. Modules that interpolate each other's class names would wait for each other forever, so it skips loading a module whose transform is already waiting for the current one (`isWaitingFor`) and reads that module's cached parse instead.
+When the CSS interpolates values imported from another module, `transform` reads them from that module's parse, which `parseFile` caches. It also waits for `this.load()` of that module, whose own transform registers its stylesheet, and imports that stylesheet first to keep the cascade order. Modules that interpolate each other's class names would wait for each other forever, so it skips loading a module whose transform is already waiting for the current one (`isWaitingFor`), whose stylesheet is not registered yet. Vite's dev server does not transform modules loaded through `this.load()`, so there a stylesheet is only imported once its module has been transformed. Do not work around this: the order only decides specificity ties, the README does not promise it, and Vite does not keep CSS in the same order between dev and builds either.
+
+The caches are cleared in `buildEnd`, which the dev server only calls when it closes. There, `watchChange` forgets the parse of an edited module and the stylesheets that change with it, and the Vite-only `hotUpdate` hook adds the modules whose CSS depends on it to the update, as Vite would otherwise reuse their transforms and only update their imports. `transform` records these dependencies in `dependentsPerFile` as it resolves imported values.
 
 ## Package Metadata
 
@@ -78,7 +80,7 @@ To resolve a class name imported from another module, `transform` waits for `thi
 
 Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`.
 
-The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test stands in for a CSS plugin.
+The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test stands in for a CSS plugin. Another sends requests to a Vite dev server, which loads modules differently from builds, and edits copies of its fixtures for the server's file watcher to pick up.
 
 If your changes alter the build output, tests will fail with snapshot mismatches. Review the diff to confirm it matches your intent, then update snapshots with:
 

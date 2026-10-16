@@ -1,7 +1,10 @@
+import { appendFile, cp, mkdtempDisposable, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
 import { rolldown, type OutputAsset, type RolldownLog } from 'rolldown';
-import { build, type BuildEnvironmentOptions } from 'vite';
+import { build, createServer, type BuildEnvironmentOptions } from 'vite';
 import { expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
@@ -66,6 +69,20 @@ async function buildWithPlugin(
     map: jsChunk?.map,
     logs,
   };
+}
+
+// Helper to create a Vite dev server with the ecij plugin, which closes when disposed
+async function createDevServer(root: string) {
+  const server = await createServer({
+    root,
+    configFile: false,
+    logLevel: 'silent',
+    plugins: [ecij()],
+    server: { middlewareMode: true, ws: false },
+    appType: 'custom',
+  });
+
+  return Object.assign(server, { [Symbol.asyncDispose]: () => server.close() });
 }
 
 test('comprehensive CSS-in-JS patterns', async () => {
@@ -257,6 +274,65 @@ test('support plain Rolldown builds', async () => {
     }
   `);
 });
+
+test.for([
+  {
+    // button.ts interpolates a color from tokens.ts, which ecij does not transform
+    file: 'tokens.ts',
+    edit: (path: string) => writeFile(path, "export const color = 'blue';\n"),
+    css: 'color: blue',
+  },
+  {
+    // Adding CSS to button.ts changes its stylesheet
+    file: 'button.ts',
+    edit: (path: string) => appendFile(path, '\nexport const iconClass = css`width: 1em;`;\n'),
+    css: 'width: 1em',
+  },
+])(
+  'update the CSS of modules that depend on an edited $file in the Vite dev server',
+  async ({ file, edit, css }) => {
+    // The dev server reads the modules from disk, so edit copies of the fixtures
+    await using fixtures = await mkdtempDisposable('./test/fixtures/edits-');
+    await cp('./test/fixtures/edits', fixtures.path, { recursive: true });
+    await using server = await createDevServer(fixtures.path);
+    const { client } = server.environments;
+
+    async function getCode(url: string) {
+      return (await client.transformRequest(url))!.code;
+    }
+
+    // The IDs of the stylesheets that a module imports, its own last
+    async function getStylesheets(url: string) {
+      const code = await getCode(url);
+      return code
+        .matchAll(/^import "(.+\.css)";$/gm)
+        .map(([, id]) => id!)
+        .toArray();
+    }
+
+    // Request modules before their importers, like when an app also imports them elsewhere.
+    // Vite then reuses the transforms of the importers of an edited module, only updating
+    // their imports.
+    await client.transformRequest('/tokens.ts');
+    const [previousStylesheet] = await getStylesheets('/button.ts');
+
+    // card.ts interpolates a class name of button.ts, so it imports its stylesheet first
+    await expect(getStylesheets('/card.ts')).resolves.toStrictEqual([
+      previousStylesheet,
+      expect.any(String),
+    ]);
+
+    await edit(join(fixtures.path, file));
+
+    // Request card.ts first, like a browser requests importers before their imports, so that
+    // its transform runs before the one of button.ts registers a new stylesheet. It must not
+    // import the previous one, which has the previous CSS, once the server picks up the edit.
+    await expect.poll(() => getStylesheets('/card.ts')).not.toContain(previousStylesheet);
+
+    const [stylesheet] = await getStylesheets('/button.ts');
+    await expect(getCode(stylesheet!)).resolves.toContain(css);
+  },
+);
 
 test('generate hash based on file path relative to root and file name to avoid name conflicts', async () => {
   const fixturePath = './test/fixtures/identical.input.ts';
