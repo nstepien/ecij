@@ -57,6 +57,8 @@ The plugin implements three Rolldown lifecycle hooks:
 
 To resolve a class name imported from another module, `transform` waits for `this.load()` of that module. Modules that interpolate each other's class names would wait for each other forever, so it skips loading a module whose transform is already waiting for the current one (`isWaitingFor`) and reads that module's cached parse instead.
 
+The caches are cleared in `buildEnd`, which the dev server only calls when it closes. There, `watchChange` forgets the parse of an edited module and the stylesheets that change with it, and the Vite-only `hotUpdate` hook adds the modules whose CSS depends on it to the update, as Vite would otherwise reuse their transforms and only update their imports. `transform` records these dependencies in `dependentsPerFile` as it resolves imported values.
+
 ## Package Metadata
 
 `package.json` doubles as the plugin's entry in the [Vite Plugin Registry](https://registry.vite.dev/), which harvests it from npm. Keep these fields accurate:
@@ -78,7 +80,7 @@ To resolve a class name imported from another module, `transform` waits for `thi
 
 Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`.
 
-The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test stands in for a CSS plugin.
+The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test stands in for a CSS plugin. Another sends requests to a Vite dev server, which loads modules differently from builds. The dev server does not watch files, so that test copies its fixtures to a temporary directory, edits them, and emits the changes itself.
 
 If your changes alter the build output, tests will fail with snapshot mismatches. Review the diff to confirm it matches your intent, then update snapshots with:
 
