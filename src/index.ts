@@ -770,14 +770,17 @@ export function ecij(configuration?: Configuration | null): Plugin {
       // their imports. Update the modules that interpolate its values as if they were edited,
       // as their CSS may change, and the modules that interpolate their class names, as they
       // import their stylesheets.
-      const dependentModules = Iterator.from(dependentsPerFile.get(file) ?? [])
-        .flatMap(function* (dependentId) {
-          yield dependentId;
-          yield* dependentsPerFile.get(dependentId) ?? [];
-        })
-        .flatMap((id) => this.environment.moduleGraph.getModulesByFile(id) ?? []);
+      const updatedModules = new Set(modules);
 
-      return new Set(modules).union(new Set(dependentModules)).values().toArray();
+      for (const dependentId of dependentsPerFile.get(file) ?? []) {
+        for (const id of [dependentId, ...(dependentsPerFile.get(dependentId) ?? [])]) {
+          for (const moduleNode of this.environment.moduleGraph.getModulesByFile(id) ?? []) {
+            updatedModules.add(moduleNode);
+          }
+        }
+      }
+
+      return [...updatedModules];
     },
 
     resolveId: {
