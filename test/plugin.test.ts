@@ -303,8 +303,8 @@ test('import the stylesheets of modules that interpolate each other in the Vite 
 
     expect(getStylesheetImports(result!.code)).toMatchInlineSnapshot(`
       [
-        "import "/test/fixtures/cycle-b.ts.f3186206.css";",
-        "import "/test/fixtures/cycle-a.ts.14c8c716.css";",
+        "import "/test/fixtures/cycle-b.ts.589f3852.css";",
+        "import "/test/fixtures/cycle-a.ts.955b96ed.css";",
       ]
     `);
   });
