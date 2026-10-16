@@ -122,6 +122,27 @@ export function ecij(configuration?: Configuration | null): Plugin {
   const extractedCssPerFile = new Map<string, string>();
 
   /**
+   * The module that each running transform is waiting for through `this.load()`.
+   *
+   * Key: module id, Value: module id
+   */
+  const pendingLoads = new Map<string, string>();
+
+  /**
+   * Whether the transform of `moduleId` is waiting for `targetId`, directly or through the
+   * transforms it is waiting for.
+   */
+  function isWaitingFor(moduleId: string, targetId: string): boolean {
+    if (moduleId === targetId) {
+      return true;
+    }
+
+    const awaitedId = pendingLoads.get(moduleId);
+
+    return awaitedId !== undefined && isWaitingFor(awaitedId, targetId);
+  }
+
+  /**
    * Parses a file and extracts all relevant information in a single pass.
    */
   async function parseFile(
@@ -528,10 +549,21 @@ export function ecij(configuration?: Configuration | null): Plugin {
         const resolvedId = await context.resolve(source, filePath);
 
         if (resolvedId != null) {
-          // populate the cache for the imported file
-          await context.load(resolvedId);
-
           const { id } = resolvedId;
+
+          // Loading a module whose transform waits for this one would never finish, which
+          // happens when modules interpolate each other's class names. Its transform has
+          // already parsed it, so its exported values are cached either way.
+          if (!isWaitingFor(id, filePath)) {
+            pendingLoads.set(filePath, id);
+
+            try {
+              // populate the cache for the imported file
+              await context.load(resolvedId);
+            } finally {
+              pendingLoads.delete(filePath);
+            }
+          }
 
           const { exportNameToValueMap } = await parseFile(context, id);
 
@@ -693,7 +725,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     name: 'ecij',
 
     buildEnd() {
-      // Clear caches between builds
+      // Clear caches between builds (`pendingLoads` empties itself as each load settles)
       parsedFileInfoCache.clear();
       stylesheetImportPerFile.clear();
       extractedCssPerFile.clear();
