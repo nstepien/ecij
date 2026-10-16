@@ -476,11 +476,12 @@ test('inline string and number literal interpolations', async () => {
     var mixedClass = (() => "css-0a775b56")();
     var negativeNumberClass = (() => "css-f5d083cc")();
     var unaryPlusClass = (() => "css-3924bbbe")();
+    var signedConstClass = (() => "css-2cff9334")();
     var booleanLiteralClass = css\`
       color: \${true};
     \`;
     //#endregion
-    export { booleanLiteralClass, mixedClass, negativeNumberClass, numberLiteralClass, stringLiteralClass, unaryPlusClass };"
+    export { booleanLiteralClass, mixedClass, negativeNumberClass, numberLiteralClass, signedConstClass, stringLiteralClass, unaryPlusClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-1c8f4a51 {
@@ -505,28 +506,32 @@ test('inline string and number literal interpolations', async () => {
 
     .css-3924bbbe {
       width: 10px;
+    }
+
+    .css-2cff9334 {
+      margin: -5px;
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "21: \`;
-    22: export const booleanLiteralClass = css\`
-    23:   color: \${true};
+        "frame": "25: \`;
+    26: export const booleanLiteralClass = css\`
+    27:   color: \${true};
                    ^
-    24: \`;",
+    28: \`;",
         "hook": "transform",
         "id": "test/fixtures/literal-interpolation.input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/literal-interpolation.input.ts",
-          "line": 23,
+          "line": 27,
         },
         "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
         "plugin": "ecij",
         "pluginCode": "COMPLEX_INTERPOLATION",
-        "pos": 497,
+        "pos": 595,
       },
     ]
   `);

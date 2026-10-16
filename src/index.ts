@@ -5,6 +5,7 @@ import { cwd } from 'node:process';
 import type {
   BindingPattern,
   BlockStatement,
+  Expression,
   ParamPattern,
   SwitchCase,
   TaggedTemplateExpression,
@@ -66,18 +67,13 @@ interface Declaration {
 interface CssTagCandidate {
   /** Variable the template is assigned to, if any. */
   localName: string | undefined;
-  /**
-   * Whether that variable is a `const`, the only kind of binding with a static value: a
-   * `let`/`var` may be reassigned, and a `var` is `undefined` until its declaration has run.
-   */
+  /** Whether that variable is a `const`, the only kind of binding with a static value. */
   isConst: boolean;
   node: TaggedTemplateExpression;
   /** Local name of the tag, a binding of ecij's `css`. */
   tagName: string;
   /** Scope the template appears in, where the tag and the interpolations are resolved. */
   scope: Scope;
-  /** Scope `localName` is bound in (the function scope for `var` declarations). */
-  bindingScope: Scope;
 }
 
 interface ParsedFileInfo {
@@ -109,6 +105,30 @@ function isBoundInScopeChain(name: string, scope: Scope): boolean {
     if (current.identifiers.has(name)) return true;
   }
   return false;
+}
+
+// Statically evaluates an expression to its string value:
+// string/number literals and signed number literals (`-5`, `+5`).
+function resolveStaticExpression(expression: Expression): string | undefined {
+  if (
+    expression.type === 'Literal' &&
+    (typeof expression.value === 'string' || typeof expression.value === 'number')
+  ) {
+    return String(expression.value);
+  }
+
+  if (
+    expression.type === 'UnaryExpression' &&
+    (expression.operator === '-' || expression.operator === '+') &&
+    expression.argument.type === 'Literal' &&
+    typeof expression.argument.value === 'number'
+  ) {
+    return String(
+      expression.operator === '-' ? -expression.argument.value : expression.argument.value,
+    );
+  }
+
+  return;
 }
 
 /**
@@ -262,7 +282,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
       }
     }
 
-    function recordIdentifierWithValue(localName: string, value: string, scope = currentScope) {
+    function recordIdentifierWithValue(localName: string, value: string, scope: Scope) {
       scope.identifiers.set(localName, value);
 
       // Only record exports for module-level (root scope) declarations
@@ -284,12 +304,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // ecij's `css`; any other tagged template is left alone.
     function addCssTagCandidate(
       node: TaggedTemplateExpression,
-      binding: {
-        localName?: string;
-        isConst?: boolean;
-        // Defaults to the current scope
-        scope?: Scope;
-      } = {},
+      localName?: string,
+      isConst = false,
     ) {
       if (!(node.tag.type === 'Identifier' && cssTagNames.has(node.tag.name))) {
         return;
@@ -297,23 +313,15 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
       processedTaggedTemplateExpressions.add(node);
       cssTagCandidates.push({
-        localName: binding.localName,
-        isConst: binding.isConst ?? false,
+        localName,
+        isConst,
         node,
         tagName: node.tag.name,
         scope: currentScope,
-        bindingScope: binding.scope ?? currentScope,
       });
     }
 
-    function extractCssTagCandidate({
-      localName,
-      isConst,
-      node,
-      tagName,
-      scope,
-      bindingScope,
-    }: CssTagCandidate) {
+    function extractCssTagCandidate({ localName, isConst, node, tagName, scope }: CssTagCandidate) {
       // A local binding shadowing the imported tag means this is not the ecij tag
       if (isBoundInScopeChain(tagName, scope)) {
         return;
@@ -336,10 +344,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
         scope,
       });
 
-      // Record generated class names for `const` css declarations (a `let`/`var`
-      // one stays unknown, see `CssTagCandidate.isConst`)
+      // Record generated class names for `const` css declarations, which are
+      // bound in the scope of their template (a `let`/`var` one stays unknown)
       if (localName !== undefined && isConst) {
-        recordIdentifierWithValue(localName, className, bindingScope);
+        recordIdentifierWithValue(localName, className, scope);
       }
     }
 
@@ -359,9 +367,6 @@ export function ecij(configuration?: Configuration | null): Plugin {
       currentScope = currentScope.parent!;
     }
 
-    // A catch clause creates the scope for its parameter; its body block reuses
-    // it instead of creating a nested scope.
-    const skippedBlockStatements = new Set<BlockStatement>();
     // Function bodies are function scopes of their own, see `BlockStatement`
     const functionBodies = new Set<BlockStatement>();
     // The switch scope is entered with the first case, see `SwitchStatement`
@@ -416,18 +421,12 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Visit AST to collect declarations and literal values
     const visitor = new Visitor({
       BlockStatement(node) {
-        if (skippedBlockStatements.has(node)) return;
         // A function body is where its `var` declarations hoist to. Parameter
         // defaults are evaluated in the enclosing parameter scope and cannot
         // see the body's declarations.
         pushScope(functionBodies.has(node));
       },
-
-      'BlockStatement:exit'(node) {
-        if (!skippedBlockStatements.has(node)) {
-          popScope();
-        }
-      },
+      'BlockStatement:exit': popScope,
 
       // Functions: a scope for the parameters; the body block is a function
       // scope of its own (see `BlockStatement`), so `var` declarations hoist
@@ -502,13 +501,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
         }
       },
 
-      // Catch clauses: create a scope for the catch parameter and merge with the body's BlockStatement
+      // Catch clauses: a scope for the parameter; the body block keeps its own
+      // nested scope, like loop bodies.
       CatchClause(node) {
         pushScope();
         if (node.param !== null) {
           recordBindingPattern(node.param);
         }
-        skippedBlockStatements.add(node.body);
       },
       'CatchClause:exit': popScope,
 
@@ -558,22 +557,17 @@ export function ecij(configuration?: Configuration | null): Plugin {
         // and a `var` is `undefined` until its declaration has run.
         const isConst = variableDeclarationKinds.at(-1) === 'const';
 
-        switch (node.init?.type) {
-          case 'TaggedTemplateExpression':
-            // Bound as unknown below; a `const` css`` candidate that gets
-            // extracted replaces it with the generated class name.
-            addCssTagCandidate(node.init, { localName, isConst, scope: targetScope });
-            break;
+        if (node.init?.type === 'TaggedTemplateExpression') {
+          // Bound as unknown below; a `const` css`` candidate that gets
+          // extracted replaces it with the generated class name.
+          addCssTagCandidate(node.init, localName, isConst);
+        } else if (isConst && node.init !== null) {
+          const value = resolveStaticExpression(node.init);
 
-          case 'Literal':
-            if (
-              isConst &&
-              (typeof node.init.value === 'string' || typeof node.init.value === 'number')
-            ) {
-              recordIdentifierWithValue(localName, String(node.init.value), targetScope);
-              return;
-            }
-            break;
+          if (value !== undefined) {
+            recordIdentifierWithValue(localName, value, targetScope);
+            return;
+          }
         }
 
         // Record as unknown value so it shadows outer variables
@@ -732,23 +726,23 @@ export function ecij(configuration?: Configuration | null): Plugin {
         if (i < expressions.length) {
           const expression = expressions[i]!;
 
-          let resolvedValue: string | undefined;
+          let resolvedValue = resolveStaticExpression(expression);
 
-          if (
-            expression.type === 'Literal' &&
-            (typeof expression.value === 'string' || typeof expression.value === 'number')
-          ) {
-            resolvedValue = String(expression.value);
-          } else if (
-            expression.type === 'UnaryExpression' &&
-            (expression.operator === '-' || expression.operator === '+') &&
-            expression.argument.type === 'Literal' &&
-            typeof expression.argument.value === 'number'
-          ) {
-            resolvedValue = String(
-              expression.operator === '-' ? -expression.argument.value : expression.argument.value,
-            );
-          } else if (expression.type === 'Identifier') {
+          if (resolvedValue === undefined) {
+            if (expression.type !== 'Identifier') {
+              // Complex expression - skip this entire css`` block
+              context.warn(
+                {
+                  pluginCode: 'COMPLEX_INTERPOLATION',
+                  message:
+                    'skipped CSS extraction — interpolation is not a static string, number, or identifier',
+                },
+                expression.start,
+              );
+              allResolved = false;
+              break;
+            }
+
             resolvedValue = await resolveValue(expression.name, declaration.scope);
 
             if (resolvedValue === undefined) {
@@ -763,18 +757,6 @@ export function ecij(configuration?: Configuration | null): Plugin {
               allResolved = false;
               break;
             }
-          } else {
-            // Complex expression - skip this entire css`` block
-            context.warn(
-              {
-                pluginCode: 'COMPLEX_INTERPOLATION',
-                message:
-                  'skipped CSS extraction — interpolation is not a static string, number, or identifier',
-              },
-              expression.start,
-            );
-            allResolved = false;
-            break;
           }
 
           cssContent += resolvedValue;

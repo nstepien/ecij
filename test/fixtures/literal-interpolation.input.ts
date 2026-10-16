@@ -30,6 +30,12 @@ export const unaryPlusClass = css`
   width: ${+10}px;
 `;
 
+// Signed numbers resolve through const bindings too
+const negativeOffset = -5;
+export const signedConstClass = css`
+  margin: ${negativeOffset}px;
+`;
+
 // Boolean literal is still rejected
 export const booleanLiteralClass = css`
   color: ${true as unknown as string};

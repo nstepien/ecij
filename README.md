@@ -139,9 +139,9 @@ Interpolations are resolved at build time when they are:
 - `const` bindings of such literals or of other `css` class names, following lexical scoping
 - named imports of such `const` bindings from other modules
 
-Any other binding, like `let`, `var`, parameters, and destructuring, shadows outer ones and is never resolved. Resolution is static, so a template may reference a `const` or a class declared later in the file.
+Resolution is static, so a template may reference a `const` declared later in the file. Other bindings, like `let`, `var`, parameters, and destructuring, are never resolved, but they still shadow outer bindings of the same name.
 
-Any other interpolation — calls, ternaries, template literals, identifiers whose value is not statically known (`let`/`var` bindings, parameters, …) — causes the whole css`` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
+Any other interpolation, like a call, a ternary, a template literal, or an identifier that does not resolve, causes the whole css`` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
 
 The `css` tag must be a named import from `'ecij'`, which may be aliased, like `import { css as styled } from 'ecij'`. A local binding of the same name shadows it, so its templates are left alone.
 
