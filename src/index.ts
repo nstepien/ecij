@@ -58,7 +58,6 @@ interface Scope {
 interface Declaration {
   className: string;
   node: TaggedTemplateExpression;
-  hasInterpolations: boolean;
   /** Scope the template appears in, where its interpolations are resolved. */
   scope: Scope;
 }
@@ -305,12 +304,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
       const className = `${classPrefix}${hash}`;
 
-      declarations.set(node, {
-        className,
-        node,
-        hasInterpolations: node.quasi.expressions.length !== 0,
-        scope,
-      });
+      declarations.set(node, { className, node, scope });
     }
 
     function pushScope(isFunctionScope = false) {
@@ -568,15 +562,11 @@ export function ecij(configuration?: Configuration | null): Plugin {
     const parsedInfo = await parseFile(context, filePath, code);
     const { declarations } = parsedInfo;
 
-    const cssExtractions: Array<{
-      className: string;
-      cssContent: string;
-      sourcePosition: number;
-    }> = [];
-    const replacements: Array<{
+    const extractions: Array<{
       start: number;
       end: number;
       className: string;
+      cssContent: string;
     }> = [];
     const stylesheetDependencies = new Set<string>();
 
@@ -709,37 +699,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
       return constValues.get(init);
     }
 
-    // Helper to add a processed CSS declaration
-    function addProcessedDeclaration(declaration: Declaration, cssContent: string) {
-      const { className, node } = declaration;
-
-      cssExtractions.push({
-        className,
-        cssContent: cssContent.trim(),
-        sourcePosition: node.start,
-      });
-
-      replacements.push({
-        start: node.start,
-        end: node.end,
-        className,
-      });
-    }
-
-    // Process declarations in two passes
-    // Pass 1: No interpolations
-    for (const declaration of declarations.values()) {
-      if (declaration.hasInterpolations) continue;
-
-      const cssContent = declaration.node.quasi.quasis[0]!.value.raw;
-      addProcessedDeclaration(declaration, cssContent);
-    }
-
-    // Pass 2: With interpolations using resolved local references
-    for (const declaration of declarations.values()) {
-      if (!declaration.hasInterpolations) continue;
-
-      const { quasis, expressions } = declaration.node.quasi;
+    // Build the CSS of each template, resolving its interpolations
+    for (const { className, node, scope } of declarations.values()) {
+      const { quasis, expressions } = node.quasi;
 
       let cssContent = '';
       let allResolved = true;
@@ -750,7 +712,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
         if (i < expressions.length) {
           const expression = expressions[i]!;
 
-          const resolvedValue = await resolveValue(expression, declaration.scope, parsedInfo);
+          const resolvedValue = await resolveValue(expression, scope, parsedInfo);
 
           if (resolvedValue === undefined) {
             if (expression.type === 'Identifier') {
@@ -782,13 +744,18 @@ export function ecij(configuration?: Configuration | null): Plugin {
         }
       }
 
-      // Only process if all interpolations were resolved
+      // Only extract the template if all its interpolations were resolved
       if (allResolved) {
-        addProcessedDeclaration(declaration, cssContent);
+        extractions.push({
+          start: node.start,
+          end: node.end,
+          className,
+          cssContent: cssContent.trim(),
+        });
       }
     }
 
-    if (replacements.length === 0) {
+    if (extractions.length === 0) {
       return {
         magicString: null,
         cssContent: '',
@@ -809,17 +776,14 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Related upstream issues (Vite's own CSS Modules lose their CSS the same way):
     // https://github.com/vitejs/vite/issues/22344
     // https://github.com/rolldown/rolldown/issues/8100
-    for (const { start, end, className } of replacements) {
+    for (const { start, end, className } of extractions) {
       magicString.overwrite(start, end, `(() => ${JSON.stringify(className)})()`);
     }
 
-    // Sort CSS extractions by source position to maintain original order
-    cssExtractions.sort((a, b) => a.sourcePosition - b.sourcePosition);
-
-    // Generate CSS module content
+    // Generate CSS module content, in the source order of the declarations
     const cssBlocks = [];
 
-    for (const { className, cssContent } of cssExtractions) {
+    for (const { className, cssContent } of extractions) {
       if (cssContent !== '') {
         cssBlocks.push(`.${className} {\n  ${cssContent}\n}`);
       }
