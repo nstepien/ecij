@@ -22,6 +22,7 @@ Node 24+ is required.
 | Format (fix) | `node --run format`       |
 | Lint         | `node --run lint`         |
 | Lint (fix)   | `node --run lint:fix`     |
+| Lint package | `node --run lint:package` |
 | Test         | `node --run test`         |
 
 **Before pushing**, merge the target branch into your branch to ensure you're working with up-to-date code, conflicts are caught early, and reviewers see accurate diffs.
@@ -33,6 +34,7 @@ node --run format
 node --run lint
 node --run typecheck
 node --run build
+node --run lint:package
 node --run test
 ```
 
@@ -42,7 +44,7 @@ CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compati
 
 ### Entry Points
 
-- `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that provides types for editor support but throws at runtime — if the plugin is misconfigured or cannot statically extract a `css` call, the throw ensures broken styles fail loudly rather than silently shipping broken code. Both files must be listed in the `package.json` `files` field: the plugin leaves the `ecij` import in place, so bundlers still resolve `index.js`. After the build, a CI step checks with jq that `npm pack` includes every file referenced by `exports`.
+- `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that provides types for editor support but throws at runtime — if the plugin is misconfigured or cannot statically extract a `css` call, the throw ensures broken styles fail loudly rather than silently shipping broken code. Both files must be listed in the `package.json` `files` field: the plugin leaves the `ecij` import in place, so bundlers still resolve `index.js`. `node --run lint:package` runs publint, which checks that the files referenced by `package.json` are published, so it needs the build first.
 - `src/index.ts` → `dist/index.js` / `dist/index.d.ts` — Plugin export (`ecij/plugin`). The Rolldown/Vite plugin that performs static CSS extraction. This single file contains the entire plugin implementation.
 
 ### Plugin Pipeline

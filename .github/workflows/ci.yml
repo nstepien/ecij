@@ -46,14 +46,8 @@ jobs:
       - name: Build
         run: node --run build
 
-      - name: Check published files
-        # bash sets pipefail, and .[] reads both npm 12's packages keyed by name and older npm's array
-        shell: bash
-        run: |
-          npm pack --dry-run --json | jq --slurpfile package package.json '
-            [$package[0].exports[][] | ltrimstr("./")] - [.[].files[].path]
-            | if . != [] then error("Exported files missing from the package: \(join(", "))") else empty end
-          '
+      - name: Lint package
+        run: node --run lint:package
 
       - name: Run tests
         run: node --run test
