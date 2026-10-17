@@ -48,6 +48,9 @@ jobs:
       - name: Build
         run: node --run build
 
+      - name: Check published files
+        run: node scripts/check-published-files.ts
+
       - name: Run tests
         run: node --run test
 

@@ -42,7 +42,7 @@ CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compati
 
 ### Entry Points
 
-- `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that provides types for editor support but throws at runtime — if the plugin is misconfigured or cannot statically extract a `css` call, the throw ensures broken styles fail loudly rather than silently shipping broken code. Both files must be listed in the `package.json` `files` field: the plugin leaves the `ecij` import in place, so bundlers still resolve `index.js`.
+- `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that provides types for editor support but throws at runtime — if the plugin is misconfigured or cannot statically extract a `css` call, the throw ensures broken styles fail loudly rather than silently shipping broken code. Both files must be listed in the `package.json` `files` field: the plugin leaves the `ecij` import in place, so bundlers still resolve `index.js`. After the build, CI runs `scripts/check-published-files.ts` to check that `npm pack` includes every file referenced by `exports`.
 - `src/index.ts` → `dist/index.js` / `dist/index.d.ts` — Plugin export (`ecij/plugin`). The Rolldown/Vite plugin that performs static CSS extraction. This single file contains the entire plugin implementation.
 
 ### Plugin Pipeline
@@ -81,8 +81,6 @@ The caches are cleared in `buildEnd`, which the dev server only calls when it cl
 Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`.
 
 The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test stands in for a CSS plugin. Another sends requests to a Vite dev server, which loads modules differently from builds, and edits copies of its fixtures for the server's file watcher to pick up.
-
-`test/package.test.ts` snapshots the files `npm pack` would publish, so it needs `dist` to be built first.
 
 If your changes alter the build output, tests will fail with snapshot mismatches. Review the diff to confirm it matches your intent, then update snapshots with:
 
