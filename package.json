@@ -17,7 +17,8 @@
   "repository": "github:nstepien/ecij",
   "files": [
     "dist",
-    "index.d.ts"
+    "index.d.ts",
+    "index.js"
   ],
   "type": "module",
   "sideEffects": false,
