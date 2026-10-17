@@ -42,7 +42,7 @@ CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compati
 
 ### Entry Points
 
-- `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that provides types for editor support but throws at runtime — if the plugin is misconfigured or cannot statically extract a `css` call, the throw ensures broken styles fail loudly rather than silently shipping broken code. Both files must be listed in the `package.json` `files` field: the plugin leaves the `ecij` import in place, so bundlers still resolve `index.js`. After the build, CI runs `scripts/check-published-files.ts` to check that `npm pack` includes every file referenced by `exports`.
+- `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that provides types for editor support but throws at runtime — if the plugin is misconfigured or cannot statically extract a `css` call, the throw ensures broken styles fail loudly rather than silently shipping broken code. Both files must be listed in the `package.json` `files` field: the plugin leaves the `ecij` import in place, so bundlers still resolve `index.js`. After the build, a CI step checks with jq that `npm pack` includes every file referenced by `exports`.
 - `src/index.ts` → `dist/index.js` / `dist/index.d.ts` — Plugin export (`ecij/plugin`). The Rolldown/Vite plugin that performs static CSS extraction. This single file contains the entire plugin implementation.
 
 ### Plugin Pipeline

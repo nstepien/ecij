@@ -5,5 +5,5 @@
     "isolatedDeclarations": false,
     "skipLibCheck": true
   },
-  "include": ["rolldown.config.ts", "scripts", "vitest.config.ts"]
+  "include": ["rolldown.config.ts", "vitest.config.ts"]
 }
