@@ -195,10 +195,6 @@ export function ecij(configuration?: Configuration | null): Plugin {
       return parsedFileInfoCache.get(filePath)!;
     }
 
-    // Convert absolute path to project-relative path and normalize to Unix format
-    // to ensure consistent hashes across different build environments (Windows/Unix)
-    const relativePath = relative(PROJECT_ROOT, filePath).replaceAll('\\', '/');
-
     // Read the source file
     const sourceText = code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
 
@@ -260,6 +256,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
     }
 
     function extractCssTagCandidates() {
+      // Convert absolute path to project-relative path and normalize to Unix format
+      // to ensure consistent hashes across different build environments (Windows/Unix)
+      const relativePath = relative(PROJECT_ROOT, filePath).replaceAll('\\', '/');
       const declarations = new Map<TaggedTemplateExpression, Declaration>();
 
       for (const [node, { name, scope }] of cssTagCandidates) {
