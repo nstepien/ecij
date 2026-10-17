@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { relative } from 'node:path';
 import { cwd } from 'node:process';
 
@@ -7,6 +7,7 @@ import type {
   BlockStatement,
   Expression,
   ParamPattern,
+  Program,
   SwitchCase,
   TaggedTemplateExpression,
 } from '@oxc-project/types';
@@ -98,7 +99,7 @@ const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 const PROJECT_ROOT = cwd();
 
 function hashText(text: string): string {
-  return createHash('md5').update(text).digest('hex').slice(0, 8);
+  return hash('md5', text).slice(0, 8);
 }
 
 // The innermost scope of the chain that binds `name`, shadowing outer bindings and imports.
@@ -107,6 +108,266 @@ function findBindingScope(name: string, scope: Scope): Scope | undefined {
     if (current.identifiers.has(name)) return current;
   }
   return;
+}
+
+// State of the program that `SCOPE_VISITOR` is visiting, see `visitProgram`
+let currentScope: Scope;
+let cssTagCandidates: Map<TaggedTemplateExpression, CssTagCandidate>;
+// Function bodies are function scopes of their own, see `BlockStatement`
+const functionBodies = new Set<BlockStatement>();
+// The switch scope is entered with the first case, see `SwitchStatement`
+const firstSwitchCases = new Set<SwitchCase>();
+// Kinds of the `VariableDeclaration`s being visited, innermost last. An
+// initializer can itself contain declarations, like a function body, so a
+// single slot would be clobbered before the next declarator is visited.
+const variableDeclarationKinds: string[] = [];
+
+function addCssTagCandidate(node: TaggedTemplateExpression, name?: string) {
+  cssTagCandidates.set(node, { name, scope: currentScope });
+}
+
+function pushScope(isFunctionScope = false) {
+  currentScope = { identifiers: new Map(), parent: currentScope, isFunctionScope };
+}
+
+function findFunctionScope(): Scope {
+  let scope = currentScope;
+  while (!scope.isFunctionScope) {
+    scope = scope.parent!;
+  }
+  return scope;
+}
+
+function popScope() {
+  currentScope = currentScope.parent!;
+}
+
+// Recursively extract all binding identifiers from a pattern and record them
+// as unknown values in the current scope (for shadowing).
+function recordBindingPattern(pattern: BindingPattern, scope = currentScope) {
+  switch (pattern.type) {
+    case 'Identifier':
+      scope.identifiers.set(pattern.name, undefined);
+      break;
+    case 'ObjectPattern':
+      for (const prop of pattern.properties) {
+        if (prop.type === 'RestElement') {
+          recordBindingPattern(prop.argument, scope);
+        } else {
+          recordBindingPattern(prop.value, scope);
+        }
+      }
+      break;
+    case 'ArrayPattern':
+      for (const element of pattern.elements) {
+        if (element === null) continue;
+        if (element.type === 'RestElement') {
+          recordBindingPattern(element.argument, scope);
+        } else {
+          recordBindingPattern(element, scope);
+        }
+      }
+      break;
+    case 'AssignmentPattern':
+      recordBindingPattern(pattern.left, scope);
+      break;
+  }
+}
+
+function recordParams(params: ParamPattern[]) {
+  for (const param of params) {
+    if (param.type === 'TSParameterProperty') {
+      recordBindingPattern(param.parameter);
+    } else if (param.type === 'RestElement') {
+      // Rest parameter: function foo(...args)
+      recordBindingPattern(param.argument);
+    } else {
+      // FormalParameter extends BindingPattern
+      recordBindingPattern(param);
+    }
+  }
+}
+
+// Visit AST to collect declarations and literal values
+const SCOPE_VISITOR = new Visitor({
+  BlockStatement(node) {
+    // A function body is where its `var` declarations hoist to. Parameter
+    // defaults are evaluated in the enclosing parameter scope and cannot
+    // see the body's declarations. Visited bodies are removed, so that the
+    // set does not keep the nodes of past visits.
+    pushScope(functionBodies.delete(node));
+  },
+  'BlockStatement:exit': popScope,
+
+  // Functions: a scope for the parameters; the body block is a function
+  // scope of its own (see `BlockStatement`), so `var` declarations hoist
+  // into the body and parameter defaults cannot see the body's declarations.
+  // FunctionDeclaration names are bound in the containing scope (before pushScope).
+  FunctionDeclaration(node) {
+    if (node.id !== null) {
+      currentScope.identifiers.set(node.id.name, undefined);
+    }
+    pushScope(true);
+    recordParams(node.params);
+    if (node.body?.type === 'BlockStatement') {
+      functionBodies.add(node.body);
+    }
+  },
+  'FunctionDeclaration:exit': popScope,
+
+  // FunctionExpression names are only visible inside the function body (for recursion).
+  // Methods, getters, setters, and constructors are function expressions too.
+  FunctionExpression(node) {
+    pushScope(true);
+    if (node.id !== null) {
+      currentScope.identifiers.set(node.id.name, undefined);
+    }
+    recordParams(node.params);
+    if (node.body?.type === 'BlockStatement') {
+      functionBodies.add(node.body);
+    }
+  },
+  'FunctionExpression:exit': popScope,
+
+  ArrowFunctionExpression(node) {
+    pushScope(true);
+    recordParams(node.params);
+    if (node.body.type === 'BlockStatement') {
+      functionBodies.add(node.body);
+    }
+  },
+  'ArrowFunctionExpression:exit': popScope,
+
+  // Loops: a scope for the head's declarations; the body block keeps its
+  // own nested scope (a body-level declaration may shadow a loop variable).
+  ForStatement() {
+    pushScope();
+  },
+  'ForStatement:exit': popScope,
+
+  ForInStatement() {
+    pushScope();
+  },
+  'ForInStatement:exit': popScope,
+
+  ForOfStatement() {
+    pushScope();
+  },
+  'ForOfStatement:exit': popScope,
+
+  // Switch statements: a scope for case-level declarations, entered with
+  // the first case so the discriminant is visited in the enclosing scope.
+  SwitchStatement(node) {
+    if (node.cases.length !== 0) {
+      firstSwitchCases.add(node.cases[0]!);
+    }
+  },
+  SwitchCase(node) {
+    // Removed when visited, like function bodies
+    if (firstSwitchCases.delete(node)) {
+      pushScope();
+    }
+  },
+  'SwitchStatement:exit'(node) {
+    if (node.cases.length !== 0) {
+      popScope();
+    }
+  },
+
+  // Catch clauses: a scope for the parameter; the body block keeps its own
+  // nested scope, like loop bodies.
+  CatchClause(node) {
+    pushScope();
+    if (node.param !== null) {
+      recordBindingPattern(node.param);
+    }
+  },
+  'CatchClause:exit': popScope,
+
+  // Class declaration names are bound in the containing scope (like function declarations).
+  ClassDeclaration(node) {
+    if (node.id !== null) {
+      currentScope.identifiers.set(node.id.name, undefined);
+    }
+  },
+
+  // Class expression names are only visible inside the class body (like FunctionExpression).
+  ClassExpression(node) {
+    pushScope();
+    if (node.id !== null) {
+      currentScope.identifiers.set(node.id.name, undefined);
+    }
+  },
+  'ClassExpression:exit': popScope,
+
+  // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement").
+  // They are function-scoped for `var` declarations.
+  StaticBlock() {
+    pushScope(true);
+  },
+  'StaticBlock:exit': popScope,
+
+  VariableDeclaration(node) {
+    variableDeclarationKinds.push(node.kind);
+  },
+  'VariableDeclaration:exit'() {
+    variableDeclarationKinds.pop();
+  },
+
+  VariableDeclarator(node) {
+    // `var` declarations are function-scoped; `let`/`const` are block-scoped
+    const targetScope =
+      variableDeclarationKinds.at(-1) === 'var' ? findFunctionScope() : currentScope;
+
+    if (node.id.type !== 'Identifier') {
+      // Destructuring pattern: record all binding identifiers for shadowing
+      recordBindingPattern(node.id, targetScope);
+      return;
+    }
+
+    const localName = node.id.name;
+    // Only a `const` has a static value: a `let`/`var` may be reassigned,
+    // and a `var` is `undefined` until its declaration has run.
+    const isConst = variableDeclarationKinds.at(-1) === 'const';
+
+    // Record the initializer of a `const`, resolved on demand, or an unknown
+    // value: either way, the binding shadows outer variables
+    targetScope.identifiers.set(localName, isConst && node.init !== null ? node.init : undefined);
+
+    if (node.init?.type === 'TaggedTemplateExpression') {
+      addCssTagCandidate(node.init, localName);
+    }
+  },
+
+  TaggedTemplateExpression(node) {
+    // Declarators add their templates first, with the variable name
+    if (!cssTagCandidates.has(node)) {
+      // No variable name for inline expressions
+      addCssTagCandidate(node);
+    }
+  },
+});
+
+/**
+ * Populates the scopes of a program from its module-level scope, and returns its tagged templates
+ * in source order, keyed by template. Whether a tag is ecij's `css` can only be decided once every
+ * scope is fully populated: `let`/`const`/`class` declarations are hoisted to the top of their
+ * block (TDZ) and `var`/function declarations to their function scope, so a binding declared
+ * *after* the template still shadows the import at the template's position.
+ *
+ * A visit is synchronous, so a single visitor and its state serve every parse. A visitor per parse
+ * would create its callbacks and compile them every time, and `Visitor` keeps the callbacks of
+ * every instance alive, along with everything they reference:
+ * https://github.com/oxc-project/oxc/issues/25510
+ */
+function visitProgram(
+  program: Program,
+  rootScope: Scope,
+): Map<TaggedTemplateExpression, CssTagCandidate> {
+  currentScope = rootScope;
+  cssTagCandidates = new Map();
+  SCOPE_VISITOR.visit(program);
+  return cssTagCandidates;
 }
 
 /**
@@ -204,14 +465,6 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Local bindings of `css` imported from 'ecij' (including aliases)
     const cssTagNames = new Set<string>();
 
-    // Scope tracking: root scope for module-level declarations
-    const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
-    let currentScope = rootScope;
-    // Kinds of the `VariableDeclaration`s being visited, innermost last. An
-    // initializer can itself contain declarations, like a function body, so a
-    // single slot would be clobbered before the next declarator is visited.
-    const variableDeclarationKinds: string[] = [];
-
     // Collect imports
     for (const staticImport of parseResult.module.staticImports) {
       for (const entry of staticImport.entries) {
@@ -243,284 +496,42 @@ export function ecij(configuration?: Configuration | null): Plugin {
       }
     }
 
-    // Tagged templates in source order, keyed by template. Whether a tag is
-    // ecij's `css` can only be decided when every scope is fully populated:
-    // `let`/`const`/`class` declarations are hoisted to the top of their block
-    // (TDZ) and `var`/function declarations to their function scope, so a
-    // binding declared *after* the template still shadows the import at the
-    // template's position.
-    const cssTagCandidates = new Map<TaggedTemplateExpression, CssTagCandidate>();
+    // Scope tracking: root scope for module-level declarations
+    const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
+    const cssTagCandidates = visitProgram(parseResult.program, rootScope);
 
-    function addCssTagCandidate(node: TaggedTemplateExpression, name?: string) {
-      cssTagCandidates.set(node, { name, scope: currentScope });
-    }
+    // Convert absolute path to project-relative path and normalize to Unix format
+    // to ensure consistent hashes across different build environments (Windows/Unix)
+    const relativePath = relative(PROJECT_ROOT, filePath).replaceAll('\\', '/');
+    const declarations = new Map<TaggedTemplateExpression, Declaration>();
 
-    function extractCssTagCandidates() {
-      // Convert absolute path to project-relative path and normalize to Unix format
-      // to ensure consistent hashes across different build environments (Windows/Unix)
-      const relativePath = relative(PROJECT_ROOT, filePath).replaceAll('\\', '/');
-      const declarations = new Map<TaggedTemplateExpression, Declaration>();
-
-      for (const [node, { name, scope }] of cssTagCandidates) {
-        // Skip other tags, including local bindings shadowing the imported one
-        if (
-          node.tag.type !== 'Identifier' ||
-          !cssTagNames.has(node.tag.name) ||
-          findBindingScope(node.tag.name, scope) !== undefined
-        ) {
-          continue;
-        }
-
-        const index = declarations.size;
-
-        // Create a hash from the relative file path, index,
-        // and name for consistency across builds.
-        // The index is always used to avoid collisions with other templates
-        // with the same name, or lack thereof, in the same file.
-        const hash = hashText(`${relativePath}:${index}:${name}`);
-
-        const className = `${classPrefix}${hash}`;
-
-        declarations.set(node, { className, scope });
+    // Every scope is populated now, so tag shadowing can be decided
+    for (const [node, { name, scope }] of cssTagCandidates) {
+      // Skip other tags, including local bindings shadowing the imported one
+      if (
+        node.tag.type !== 'Identifier' ||
+        !cssTagNames.has(node.tag.name) ||
+        findBindingScope(node.tag.name, scope) !== undefined
+      ) {
+        continue;
       }
 
-      return declarations;
+      const index = declarations.size;
+
+      // Create a hash from the relative file path, index,
+      // and name for consistency across builds.
+      // The index is always used to avoid collisions with other templates
+      // with the same name, or lack thereof, in the same file.
+      const hash = hashText(`${relativePath}:${index}:${name}`);
+
+      const className = `${classPrefix}${hash}`;
+
+      declarations.set(node, { className, scope });
     }
-
-    function pushScope(isFunctionScope = false) {
-      currentScope = { identifiers: new Map(), parent: currentScope, isFunctionScope };
-    }
-
-    function findFunctionScope(): Scope {
-      let scope = currentScope;
-      while (!scope.isFunctionScope) {
-        scope = scope.parent!;
-      }
-      return scope;
-    }
-
-    function popScope() {
-      currentScope = currentScope.parent!;
-    }
-
-    // Function bodies are function scopes of their own, see `BlockStatement`
-    const functionBodies = new Set<BlockStatement>();
-    // The switch scope is entered with the first case, see `SwitchStatement`
-    const firstSwitchCases = new Set<SwitchCase>();
-
-    // Recursively extract all binding identifiers from a pattern and record them
-    // as unknown values in the current scope (for shadowing).
-    function recordBindingPattern(pattern: BindingPattern, scope = currentScope) {
-      switch (pattern.type) {
-        case 'Identifier':
-          scope.identifiers.set(pattern.name, undefined);
-          break;
-        case 'ObjectPattern':
-          for (const prop of pattern.properties) {
-            if (prop.type === 'RestElement') {
-              recordBindingPattern(prop.argument, scope);
-            } else {
-              recordBindingPattern(prop.value, scope);
-            }
-          }
-          break;
-        case 'ArrayPattern':
-          for (const element of pattern.elements) {
-            if (element === null) continue;
-            if (element.type === 'RestElement') {
-              recordBindingPattern(element.argument, scope);
-            } else {
-              recordBindingPattern(element, scope);
-            }
-          }
-          break;
-        case 'AssignmentPattern':
-          recordBindingPattern(pattern.left, scope);
-          break;
-      }
-    }
-
-    function recordParams(params: ParamPattern[]) {
-      for (const param of params) {
-        if (param.type === 'TSParameterProperty') {
-          recordBindingPattern(param.parameter);
-        } else if (param.type === 'RestElement') {
-          // Rest parameter: function foo(...args)
-          recordBindingPattern(param.argument);
-        } else {
-          // FormalParameter extends BindingPattern
-          recordBindingPattern(param);
-        }
-      }
-    }
-
-    // Visit AST to collect declarations and literal values
-    const visitor = new Visitor({
-      BlockStatement(node) {
-        // A function body is where its `var` declarations hoist to. Parameter
-        // defaults are evaluated in the enclosing parameter scope and cannot
-        // see the body's declarations.
-        pushScope(functionBodies.has(node));
-      },
-      'BlockStatement:exit': popScope,
-
-      // Functions: a scope for the parameters; the body block is a function
-      // scope of its own (see `BlockStatement`), so `var` declarations hoist
-      // into the body and parameter defaults cannot see the body's declarations.
-      // FunctionDeclaration names are bound in the containing scope (before pushScope).
-      FunctionDeclaration(node) {
-        if (node.id !== null) {
-          currentScope.identifiers.set(node.id.name, undefined);
-        }
-        pushScope(true);
-        recordParams(node.params);
-        if (node.body?.type === 'BlockStatement') {
-          functionBodies.add(node.body);
-        }
-      },
-      'FunctionDeclaration:exit': popScope,
-
-      // FunctionExpression names are only visible inside the function body (for recursion).
-      // Methods, getters, setters, and constructors are function expressions too.
-      FunctionExpression(node) {
-        pushScope(true);
-        if (node.id !== null) {
-          currentScope.identifiers.set(node.id.name, undefined);
-        }
-        recordParams(node.params);
-        if (node.body?.type === 'BlockStatement') {
-          functionBodies.add(node.body);
-        }
-      },
-      'FunctionExpression:exit': popScope,
-
-      ArrowFunctionExpression(node) {
-        pushScope(true);
-        recordParams(node.params);
-        if (node.body.type === 'BlockStatement') {
-          functionBodies.add(node.body);
-        }
-      },
-      'ArrowFunctionExpression:exit': popScope,
-
-      // Loops: a scope for the head's declarations; the body block keeps its
-      // own nested scope (a body-level declaration may shadow a loop variable).
-      ForStatement() {
-        pushScope();
-      },
-      'ForStatement:exit': popScope,
-
-      ForInStatement() {
-        pushScope();
-      },
-      'ForInStatement:exit': popScope,
-
-      ForOfStatement() {
-        pushScope();
-      },
-      'ForOfStatement:exit': popScope,
-
-      // Switch statements: a scope for case-level declarations, entered with
-      // the first case so the discriminant is visited in the enclosing scope.
-      SwitchStatement(node) {
-        if (node.cases.length !== 0) {
-          firstSwitchCases.add(node.cases[0]!);
-        }
-      },
-      SwitchCase(node) {
-        if (firstSwitchCases.has(node)) {
-          pushScope();
-        }
-      },
-      'SwitchStatement:exit'(node) {
-        if (node.cases.length !== 0) {
-          popScope();
-        }
-      },
-
-      // Catch clauses: a scope for the parameter; the body block keeps its own
-      // nested scope, like loop bodies.
-      CatchClause(node) {
-        pushScope();
-        if (node.param !== null) {
-          recordBindingPattern(node.param);
-        }
-      },
-      'CatchClause:exit': popScope,
-
-      // Class declaration names are bound in the containing scope (like function declarations).
-      ClassDeclaration(node) {
-        if (node.id !== null) {
-          currentScope.identifiers.set(node.id.name, undefined);
-        }
-      },
-
-      // Class expression names are only visible inside the class body (like FunctionExpression).
-      ClassExpression(node) {
-        pushScope();
-        if (node.id !== null) {
-          currentScope.identifiers.set(node.id.name, undefined);
-        }
-      },
-      'ClassExpression:exit': popScope,
-
-      // Static blocks have their own scope (type is "StaticBlock", not "BlockStatement").
-      // They are function-scoped for `var` declarations.
-      StaticBlock() {
-        pushScope(true);
-      },
-      'StaticBlock:exit': popScope,
-
-      VariableDeclaration(node) {
-        variableDeclarationKinds.push(node.kind);
-      },
-      'VariableDeclaration:exit'() {
-        variableDeclarationKinds.pop();
-      },
-
-      VariableDeclarator(node) {
-        // `var` declarations are function-scoped; `let`/`const` are block-scoped
-        const targetScope =
-          variableDeclarationKinds.at(-1) === 'var' ? findFunctionScope() : currentScope;
-
-        if (node.id.type !== 'Identifier') {
-          // Destructuring pattern: record all binding identifiers for shadowing
-          recordBindingPattern(node.id, targetScope);
-          return;
-        }
-
-        const localName = node.id.name;
-        // Only a `const` has a static value: a `let`/`var` may be reassigned,
-        // and a `var` is `undefined` until its declaration has run.
-        const isConst = variableDeclarationKinds.at(-1) === 'const';
-
-        // Record the initializer of a `const`, resolved on demand, or an unknown
-        // value: either way, the binding shadows outer variables
-        targetScope.identifiers.set(
-          localName,
-          isConst && node.init !== null ? node.init : undefined,
-        );
-
-        if (node.init?.type === 'TaggedTemplateExpression') {
-          addCssTagCandidate(node.init, localName);
-        }
-      },
-
-      TaggedTemplateExpression(node) {
-        // Declarators add their templates first, with the variable name
-        if (!cssTagCandidates.has(node)) {
-          // No variable name for inline expressions
-          addCssTagCandidate(node);
-        }
-      },
-    });
-
-    visitor.visit(parseResult.program);
 
     const parsedInfo: ParsedFileInfo = {
       filePath,
-      // Every scope is populated now, so tag shadowing can be decided
-      declarations: extractCssTagCandidates(),
+      declarations,
       importedIdentifiers,
       exportedLocalNames,
       rootScope,
