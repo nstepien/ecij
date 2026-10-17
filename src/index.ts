@@ -76,6 +76,17 @@ interface CssTagCandidate {
   scope: Scope;
 }
 
+/**
+ * A `const` declarator, other than of a css`` template, whose value is evaluated once the visit
+ * completes, as its initializer may reference a binding declared after it.
+ */
+interface ConstDeclarator {
+  localName: string;
+  init: Expression;
+  /** Scope the declarator appears in, where it is bound and its initializer is evaluated. */
+  scope: Scope;
+}
+
 interface ParsedFileInfo {
   readonly declarations: readonly Declaration[];
   readonly importedIdentifiers: ReadonlyMap<string, { source: string; imported: string }>;
@@ -99,12 +110,12 @@ function hashText(text: string): string {
   return createHash('md5').update(text).digest('hex').slice(0, 8);
 }
 
-// True if `name` is bound anywhere along the scope chain, so it shadows imports.
-function isBoundInScopeChain(name: string, scope: Scope): boolean {
+// The innermost scope of the chain that binds `name`, shadowing outer bindings and imports.
+function findBindingScope(name: string, scope: Scope): Scope | undefined {
   for (let current: Scope | null = scope; current !== null; current = current.parent) {
-    if (current.identifiers.has(name)) return true;
+    if (current.identifiers.has(name)) return current;
   }
-  return false;
+  return;
 }
 
 // Statically evaluates an expression to its string value:
@@ -300,6 +311,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // the template's position.
     const cssTagCandidates: CssTagCandidate[] = [];
 
+    // `const` declarators in source order, evaluated once the visit completes
+    const constDeclarators: ConstDeclarator[] = [];
+
     // Records `node` as a css`` candidate if its tag is a local binding of
     // ecij's `css`; any other tagged template is left alone.
     function addCssTagCandidate(
@@ -307,11 +321,12 @@ export function ecij(configuration?: Configuration | null): Plugin {
       localName?: string,
       isConst = false,
     ) {
+      processedTaggedTemplateExpressions.add(node);
+
       if (!(node.tag.type === 'Identifier' && cssTagNames.has(node.tag.name))) {
         return;
       }
 
-      processedTaggedTemplateExpressions.add(node);
       cssTagCandidates.push({
         localName,
         isConst,
@@ -323,7 +338,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
     function extractCssTagCandidate({ localName, isConst, node, tagName, scope }: CssTagCandidate) {
       // A local binding shadowing the imported tag means this is not the ecij tag
-      if (isBoundInScopeChain(tagName, scope)) {
+      if (findBindingScope(tagName, scope) !== undefined) {
         return;
       }
 
@@ -349,6 +364,22 @@ export function ecij(configuration?: Configuration | null): Plugin {
       if (localName !== undefined && isConst) {
         recordIdentifierWithValue(localName, className, scope);
       }
+    }
+
+    // Records the value of a `const` declarator if its initializer is a static
+    // expression or a binding with a known value, and returns whether it did
+    function evaluateConstDeclarator({ localName, init, scope }: ConstDeclarator): boolean {
+      const value =
+        init.type === 'Identifier'
+          ? findBindingScope(init.name, scope)?.identifiers.get(init.name)
+          : resolveStaticExpression(init);
+
+      if (value === undefined) {
+        return false;
+      }
+
+      recordIdentifierWithValue(localName, value, scope);
+      return true;
     }
 
     function pushScope(isFunctionScope = false) {
@@ -445,6 +476,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
       'FunctionDeclaration:exit': popScope,
 
       // FunctionExpression names are only visible inside the function body (for recursion).
+      // Methods, getters, setters, and constructors are function expressions too.
       FunctionExpression(node) {
         pushScope(true);
         if (node.id !== null) {
@@ -557,21 +589,16 @@ export function ecij(configuration?: Configuration | null): Plugin {
         // and a `var` is `undefined` until its declaration has run.
         const isConst = variableDeclarationKinds.at(-1) === 'const';
 
+        // Record as unknown value so it shadows outer variables. A `const` gets
+        // its value once the visit completes: the class name of its css``
+        // template, or the value of its initializer.
+        targetScope.identifiers.set(localName, undefined);
+
         if (node.init?.type === 'TaggedTemplateExpression') {
-          // Bound as unknown below; a `const` css`` candidate that gets
-          // extracted replaces it with the generated class name.
           addCssTagCandidate(node.init, localName, isConst);
         } else if (isConst && node.init !== null) {
-          const value = resolveStaticExpression(node.init);
-
-          if (value !== undefined) {
-            recordIdentifierWithValue(localName, value, targetScope);
-            return;
-          }
+          constDeclarators.push({ localName, init: node.init, scope: targetScope });
         }
-
-        // Record as unknown value so it shadows outer variables
-        targetScope.identifiers.set(localName, undefined);
       },
 
       TaggedTemplateExpression(node) {
@@ -587,6 +614,19 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Every scope is populated now, so tag shadowing can be decided
     for (const candidate of cssTagCandidates) {
       extractCssTagCandidate(candidate);
+    }
+
+    // `const` values come next, so that they may reference class names. An initializer may
+    // also reference a `const` evaluated after it, so they are evaluated in rounds, until a
+    // round makes no progress: the values left are unknown, like those of a cycle.
+    for (let pending = constDeclarators; pending.length !== 0;) {
+      const unevaluated = pending.filter((declarator) => !evaluateConstDeclarator(declarator));
+
+      if (unevaluated.length === pending.length) {
+        break;
+      }
+
+      pending = unevaluated;
     }
 
     return parsedInfo;
@@ -623,16 +663,12 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
     // Helper to resolve a value from an identifier, walking up the scope chain
     async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
-      if (scope.identifiers.has(identifierName)) {
+      const bindingScope = findBindingScope(identifierName, scope);
+
+      if (bindingScope !== undefined) {
         // May return undefined for declarations with unknown values (like function params),
         // which stops the lookup and signals "can't resolve"
-        return scope.identifiers.get(identifierName);
-      }
-
-      // Walk up the scope chain to find the identifier
-      const { parent } = scope;
-      if (parent !== null) {
-        return resolveValue(identifierName, parent);
+        return bindingScope.identifiers.get(identifierName);
       }
 
       // Check if it's an imported identifier

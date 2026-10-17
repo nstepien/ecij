@@ -537,6 +537,138 @@ test('inline string and number literal interpolations', async () => {
   `);
 });
 
+test('resolve const bindings of other const bindings', async () => {
+  const fixturePath = './test/fixtures/const-alias.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "//#region index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    var aliasedColor = "teal";
+    //#endregion
+    //#region test/fixtures/const-alias.input.ts
+    var aliasedValueClass = (() => "css-5c4bfb3e")();
+    var aliasedClassNameClass = (() => "css-c73dd446")();
+    function scopedAliases() {
+    	return (() => "css-7d10eee0")();
+    }
+    var importedAliasesClass = (() => "css-3c49bc26")();
+    function unresolvedAliases() {
+    	const fromLet = "blue";
+    	const fromImport = aliasedColor;
+    	return [css\`
+          color: \${fromLet};
+        \`, css\`
+          color: \${fromImport};
+        \`];
+    }
+    function cyclicAliases() {
+    	const second = second;
+    	return css\`
+        color: \${second};
+      \`;
+    }
+    //#endregion
+    export { aliasedClassNameClass, aliasedValueClass, cyclicAliases, importedAliasesClass, scopedAliases, unresolvedAliases };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-7464280b {
+      padding: 8px;
+    }.css-5c4bfb3e {
+      color: red;
+    }
+
+    .css-0c86121f {
+      display: flex;
+    }
+
+    .css-c73dd446 {
+      &.css-0c86121f {
+        gap: 4px;
+      }
+    }
+
+    .css-7d10eee0 {
+      color: darkred;
+        border-color: blue;
+    }
+
+    .css-3c49bc26 {
+      color: teal;
+
+      &.css-7464280b {
+        color: red;
+      }
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "38:   const fromImport = aliasedColor;
+    39:   return [css\`
+    40:       color: \${fromLet};
+                       ^
+    41:     \`, css\`
+    42:       color: \${fromImport};",
+        "hook": "transform",
+        "id": "test/fixtures/const-alias.input.ts",
+        "loc": {
+          "column": 15,
+          "file": "test/fixtures/const-alias.input.ts",
+          "line": 40,
+        },
+        "message": "skipped CSS extraction — could not resolve "fromLet" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 821,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "40:       color: \${fromLet};
+    41:     \`, css\`
+    42:       color: \${fromImport};
+                       ^
+    43:     \`];
+    44: }",
+        "hook": "transform",
+        "id": "test/fixtures/const-alias.input.ts",
+        "loc": {
+          "column": 15,
+          "file": "test/fixtures/const-alias.input.ts",
+          "line": 42,
+        },
+        "message": "skipped CSS extraction — could not resolve "fromImport" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 858,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "47:   const second = first;
+    48:   return css\`
+    49:     color: \${second};
+                     ^
+    50:   \`;
+    51: }",
+        "hook": "transform",
+        "id": "test/fixtures/const-alias.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/const-alias.input.ts",
+          "line": 49,
+        },
+        "message": "skipped CSS extraction — could not resolve "second" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 987,
+      },
+    ]
+  `);
+});
+
 test('skip empty css blocks', async () => {
   const fixturePath = './test/fixtures/empty-css.input.ts';
   const result = await buildWithPlugin(fixturePath);
