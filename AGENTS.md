@@ -42,6 +42,8 @@ node --run test
 
 CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compatible, especially path handling.
 
+Workflows pin every action to a full commit SHA with its version in a comment, which Dependabot keeps up to date, and pass expressions to `run` steps through `env` instead of inlining them. CI audits them with [zizmor](https://docs.zizmor.sh/), which runs locally with `uvx zizmor .github`. The release workflow installs and runs the dependencies in a read-only job and hands `dist` to the job that publishes, so no dependency code runs with the `id-token: write` permission that npm's trusted publishing relies on.
+
 ## Architecture
 
 ### Entry Points
