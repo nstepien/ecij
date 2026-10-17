@@ -6,9 +6,8 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
-    # Wait a week for new releases, but not for peer dependencies, to catch compatibility issues early
+    # Skip the default 3-day cooldown for peer dependencies to catch compatibility issues early
     cooldown:
-      default-days: 7
       exclude:
         - 'rolldown'
         - 'vite'
@@ -30,8 +29,6 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
-    cooldown:
-      default-days: 7
     groups:
       actions:
         patterns:
