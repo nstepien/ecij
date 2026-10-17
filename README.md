@@ -138,8 +138,8 @@ Interpolations are resolved at build time, following lexical scoping:
 ```ts
 import { css } from 'ecij';
 
-import { iconClassname } from './icon';
-import { spacing } from './tokens';
+import { iconClassname } from './icons';
+import * as tokens from './tokens';
 
 const brand = 'blue';
 const accent = brand;
@@ -147,7 +147,7 @@ const accent = brand;
 export const buttonClassname = css`
   margin: ${-1}px ${8}px; /* string and number literals, including signed numbers */
   color: ${accent}; /* const bindings of such literals or of other bindings that resolve */
-  padding: ${spacing}px; /* named imports of such const bindings from other modules */
+  padding: ${tokens.spacing}px; /* named, default, and namespace imports of such bindings */
 
   /* generated class names, including imported ones */
   &:hover .${iconClassname} {
@@ -158,9 +158,11 @@ export const buttonClassname = css`
 
 `let` and `var` bindings, parameters, and destructured bindings are never resolved, but they still shadow outer bindings of the same name.
 
+Imports are followed through re-exports, like `export { iconClassname } from './icon'`, `export * from './icon'`, and `export * as icons from './icon'`, with the semantics of ES modules: an explicit export takes precedence over `export *`, a name that several `export *` provide through different bindings is ambiguous and left unresolved, and `export *` does not provide the default export. An import with a query, like `?raw` or `?url`, resolves to the default export of that module, which is the text or the URL of the file.
+
 Any other interpolation, like a call, a ternary, a template literal, or an identifier that does not resolve, causes the whole ` css`` ` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
 
-The `css` tag must be a named import from `'ecij'`, which may be aliased, like `import { css as styled } from 'ecij'`. A local binding of the same name shadows it, so its templates are left alone.
+The `css` tag must be a named import from `'ecij'`, which may be aliased, like `import { css as styled } from 'ecij'`, but not reached through a namespace import or a re-export. A local binding of the same name shadows it, so its templates are left alone.
 
 ## Development
 
@@ -186,7 +188,3 @@ npm test
 # Update test snapshots
 npm test -- -u
 ```
-
-## TODO
-
-- Full import/export handling (default/namespace import/export)
