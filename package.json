@@ -17,7 +17,8 @@
   "repository": "github:nstepien/ecij",
   "files": [
     "dist",
-    "index.d.ts"
+    "index.d.ts",
+    "index.js"
   ],
   "type": "module",
   "sideEffects": false,
@@ -40,6 +41,7 @@
     "format:check": "oxfmt --check",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
+    "lint:package": "publint --strict",
     "typecheck": "tsc --build",
     "test": "vitest run"
   },
@@ -50,6 +52,7 @@
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
     "oxlint-tsgolint": "^7.0.2004",
+    "publint": "^0.3.25",
     "rolldown": "^1.2.14",
     "rolldown-plugin-dts": "^0.28.8",
     "typescript": "^7.0.2",

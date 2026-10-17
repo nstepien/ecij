@@ -22,6 +22,7 @@ Node 24+ is required.
 | Format (fix) | `node --run format`       |
 | Lint         | `node --run lint`         |
 | Lint (fix)   | `node --run lint:fix`     |
+| Lint package | `node --run lint:package` |
 | Test         | `node --run test`         |
 
 **Before pushing**, merge the target branch into your branch to ensure you're working with up-to-date code, conflicts are caught early, and reviewers see accurate diffs.
@@ -33,8 +34,11 @@ node --run format
 node --run lint
 node --run typecheck
 node --run build
+node --run lint:package
 node --run test
 ```
+
+`lint:package` runs publint, which must run after `build`.
 
 CI runs on both Ubuntu and Windows, so ensure changes are cross-platform compatible, especially path handling.
 
