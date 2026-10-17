@@ -1,6 +1,6 @@
 import { css } from 'ecij';
 
-import { aliasedClass, aliasedColor } from './const-alias-helper';
+import { aliasedClass, aliasedColor, aliasedWeight } from './const-alias-helper';
 
 const red = 'red';
 
@@ -40,29 +40,27 @@ export function scopedAliases() {
 const brand = 'blue';
 const accent = brand;
 
-// Exported aliases resolve in the modules importing them
+// Imports resolve too, and exported aliases resolve in the module declaring
+// them: of a literal, of a class name, and of an import
+const card = aliasedClass;
+
 export const importedAliasesClass = css`
   color: ${aliasedColor};
+  font-weight: ${aliasedWeight};
 
-  &.${aliasedClass} {
+  &.${card} {
     color: ${red};
   }
 `;
 
-// An alias of a `let` or of an import does not resolve → NOT extracted
-export function unresolvedAliases() {
+// An alias of a `let` does not resolve → NOT extracted
+export function unresolvedAlias() {
   let mutable = 'blue';
   const fromLet = mutable;
-  const fromImport = aliasedColor;
 
-  return [
-    css`
-      color: ${fromLet};
-    `,
-    css`
-      color: ${fromImport};
-    `,
-  ];
+  return css`
+    color: ${fromLet};
+  `;
 }
 
 // Neither does a cycle → NOT extracted

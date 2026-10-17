@@ -138,29 +138,25 @@ Interpolations are resolved at build time, following lexical scoping:
 ```ts
 import { css } from 'ecij';
 
+import { iconClassname } from './icon';
 import { spacing } from './tokens';
 
 const brand = 'blue';
 const accent = brand;
 
-export const button = css`
+export const buttonClassname = css`
   margin: ${-1}px ${8}px; /* string and number literals, including signed numbers */
-  color: ${accent}; /* const bindings of such literals or of other const bindings */
+  color: ${accent}; /* const bindings of such literals or of other bindings that resolve */
   padding: ${spacing}px; /* named imports of such const bindings from other modules */
 
-  /* class names of const templates */
-  &:hover .${icon} {
+  /* generated class names, including imported ones */
+  &:hover .${iconClassname} {
     fill: white;
   }
 `;
-
-// Resolution is static, so a const may be declared after the templates that reference it
-export const icon = css`
-  fill: currentColor;
-`;
 ```
 
-`let` and `var` bindings, parameters, and destructured bindings are never resolved, but they still shadow outer bindings of the same name. A `const` bound to an import, like `const gap = spacing`, is not resolved either.
+`let` and `var` bindings, parameters, and destructured bindings are never resolved, but they still shadow outer bindings of the same name.
 
 Any other interpolation, like a call, a ternary, a template literal, or an identifier that does not resolve, causes the whole ` css`` ` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
 

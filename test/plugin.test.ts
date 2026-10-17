@@ -546,7 +546,6 @@ test('resolve const bindings of other const bindings', async () => {
     function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
-    var aliasedColor = "teal";
     //#endregion
     //#region test/fixtures/const-alias.input.ts
     var aliasedValueClass = (() => "css-5c4bfb3e")();
@@ -555,14 +554,10 @@ test('resolve const bindings of other const bindings', async () => {
     	return (() => "css-7d10eee0")();
     }
     var importedAliasesClass = (() => "css-3c49bc26")();
-    function unresolvedAliases() {
-    	const fromLet = "blue";
-    	const fromImport = aliasedColor;
-    	return [css\`
-          color: \${fromLet};
-        \`, css\`
-          color: \${fromImport};
-        \`];
+    function unresolvedAlias() {
+    	return css\`
+        color: \${"blue"};
+      \`;
     }
     function cyclicAliases() {
     	const second = second;
@@ -571,7 +566,7 @@ test('resolve const bindings of other const bindings', async () => {
       \`;
     }
     //#endregion
-    export { aliasedClassNameClass, aliasedValueClass, cyclicAliases, importedAliasesClass, scopedAliases, unresolvedAliases };"
+    export { aliasedClassNameClass, aliasedValueClass, cyclicAliases, importedAliasesClass, scopedAliases, unresolvedAlias };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-7464280b {
@@ -597,6 +592,7 @@ test('resolve const bindings of other const bindings', async () => {
 
     .css-3c49bc26 {
       color: teal;
+      font-weight: bold;
 
       &.css-7464280b {
         color: red;
@@ -607,63 +603,43 @@ test('resolve const bindings of other const bindings', async () => {
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "38:   const fromImport = aliasedColor;
-    39:   return [css\`
-    40:       color: \${fromLet};
-                       ^
-    41:     \`, css\`
-    42:       color: \${fromImport};",
-        "hook": "transform",
-        "id": "test/fixtures/const-alias.input.ts",
-        "loc": {
-          "column": 15,
-          "file": "test/fixtures/const-alias.input.ts",
-          "line": 40,
-        },
-        "message": "skipped CSS extraction — could not resolve "fromLet" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 821,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "40:       color: \${fromLet};
-    41:     \`, css\`
-    42:       color: \${fromImport};
-                       ^
-    43:     \`];
-    44: }",
-        "hook": "transform",
-        "id": "test/fixtures/const-alias.input.ts",
-        "loc": {
-          "column": 15,
-          "file": "test/fixtures/const-alias.input.ts",
-          "line": 42,
-        },
-        "message": "skipped CSS extraction — could not resolve "fromImport" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 858,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "47:   const second = first;
-    48:   return css\`
-    49:     color: \${second};
+        "frame": "39:   const fromLet = mutable;
+    40:   return css\`
+    41:     color: \${fromLet};
                      ^
-    50:   \`;
-    51: }",
+    42:   \`;
+    43: }",
         "hook": "transform",
         "id": "test/fixtures/const-alias.input.ts",
         "loc": {
           "column": 13,
           "file": "test/fixtures/const-alias.input.ts",
-          "line": 49,
+          "line": 41,
+        },
+        "message": "skipped CSS extraction — could not resolve "fromLet" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 849,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "46:   const second = first;
+    47:   return css\`
+    48:     color: \${second};
+                     ^
+    49:   \`;
+    50: }",
+        "hook": "transform",
+        "id": "test/fixtures/const-alias.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/const-alias.input.ts",
+          "line": 48,
         },
         "message": "skipped CSS extraction — could not resolve "second" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 987,
+        "pos": 972,
       },
     ]
   `);
