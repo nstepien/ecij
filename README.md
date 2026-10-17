@@ -133,15 +133,36 @@ ecij({
 
 ## Static resolution
 
-Interpolations are resolved at build time when they are:
+Interpolations are resolved at build time, following lexical scoping:
 
-- string or number literals, including signed numbers (`${'red'}`, `${16}`, `${-5}`)
-- `const` bindings of such literals or of other `css` class names, following lexical scoping
-- named imports of such `const` bindings from other modules
+```ts
+import { css } from 'ecij';
 
-Resolution is static, so a template may reference a `const` declared later in the file. Other bindings, like `let`, `var`, parameters, and destructuring, are never resolved, but they still shadow outer bindings of the same name.
+import { spacing } from './tokens';
 
-Any other interpolation, like a call, a ternary, a template literal, or an identifier that does not resolve, causes the whole css`` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
+const brand = 'blue';
+const accent = brand;
+
+export const button = css`
+  margin: ${-1}px ${8}px; /* string and number literals, including signed numbers */
+  color: ${accent}; /* const bindings of such literals or of other const bindings */
+  padding: ${spacing}px; /* named imports of such const bindings from other modules */
+
+  /* class names of const templates */
+  &:hover .${icon} {
+    fill: white;
+  }
+`;
+
+// Resolution is static, so a const may be declared after the templates that reference it
+export const icon = css`
+  fill: currentColor;
+`;
+```
+
+`let` and `var` bindings, parameters, and destructured bindings are never resolved, but they still shadow outer bindings of the same name. A `const` bound to an import, like `const gap = spacing`, is not resolved either.
+
+Any other interpolation, like a call, a ternary, a template literal, or an identifier that does not resolve, causes the whole ` css`` ` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
 
 The `css` tag must be a named import from `'ecij'`, which may be aliased, like `import { css as styled } from 'ecij'`. A local binding of the same name shadows it, so its templates are left alone.
 
