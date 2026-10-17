@@ -1,0 +1,7 @@
+# https://docs.zizmor.sh/configuration/
+
+rules:
+  # Accept Dependabot's default 3-day cooldown
+  dependabot-cooldown:
+    config:
+      days: 3
