@@ -1,12 +1,18 @@
+# To release a new version, run these commands on an up-to-date main branch:
+#
+#   npm version <patch|minor|major|x.y.z>
+#   git push --atomic --follow-tags origin main
+#
+# `npm version` commits the new version and tags it, and the push updates main and the tag together,
+# bypassing the default branch ruleset as an admin. The new tag runs this workflow, which checks the
+# tagged commit, publishes it to npm, and creates the GitHub release.
+
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release, like 0.1.1, 0.2.0, or 1.0.0'
-        required: true
-        type: string
+  push:
+    tags:
+      - 'v*'
 
 permissions: {}
 
@@ -21,7 +27,6 @@ jobs:
   # Dependencies only run in this read-only job, so they cannot mint an npm publishing token
   build:
     name: Build
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -31,6 +36,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node.js
@@ -38,6 +44,12 @@ jobs:
         with:
           node-version: lts/*
           check-latest: true
+
+      - name: Check that the tag is on main
+        run: git merge-base --is-ancestor HEAD origin/main
+
+      - name: Check that the tag matches the package version
+        run: test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -74,16 +86,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write # Push the tag and create the GitHub release
+      contents: write # Create the GitHub release
       id-token: write # Publish to npm with trusted publishing
-    env:
-      VERSION: ${{ inputs.version }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node.js
@@ -99,22 +108,11 @@ jobs:
           name: dist
           path: dist
 
-      - name: Update version
-        run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
-          npm version "$VERSION"
-
-      - name: Push tag
-        run: git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "v${VERSION}"
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       # https://docs.npmjs.com/trusted-publishers
       - name: Publish to npm
         run: npm publish
 
       - name: Create GitHub Release
-        run: gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
         env:
           GH_TOKEN: ${{ github.token }}
