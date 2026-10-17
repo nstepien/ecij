@@ -465,7 +465,22 @@ export function varDeclaredTemplates() {
 }
 
 // =============================================
-// 37. Module-level check: everything should still resolve
+// 37. var destructuring in block scope hoists to function scope
+// =============================================
+export function varDestructuringInBlock() {
+  {
+    var { color } = { color: 'blue' };
+    console.log(color);
+  }
+  // the destructured var hoists to the function scope: it shadows module-level
+  // color for the whole function → NOT extracted
+  return css`
+    color: ${color};
+  `;
+}
+
+// =============================================
+// 38. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
