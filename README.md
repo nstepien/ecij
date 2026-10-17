@@ -131,6 +131,37 @@ ecij({
 });
 ```
 
+## Static resolution
+
+Interpolations are resolved at build time, following lexical scoping:
+
+```ts
+import { css } from 'ecij';
+
+import { iconClassname } from './icon';
+import { spacing } from './tokens';
+
+const brand = 'blue';
+const accent = brand;
+
+export const buttonClassname = css`
+  margin: ${-1}px ${8}px; /* string and number literals, including signed numbers */
+  color: ${accent}; /* const bindings of such literals or of other bindings that resolve */
+  padding: ${spacing}px; /* named imports of such const bindings from other modules */
+
+  /* generated class names, including imported ones */
+  &:hover .${iconClassname} {
+    fill: white;
+  }
+`;
+```
+
+`let` and `var` bindings, parameters, and destructured bindings are never resolved, but they still shadow outer bindings of the same name.
+
+Any other interpolation, like a call, a ternary, a template literal, or an identifier that does not resolve, causes the whole ` css`` ` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
+
+The `css` tag must be a named import from `'ecij'`, which may be aliased, like `import { css as styled } from 'ecij'`. A local binding of the same name shadows it, so its templates are left alone.
+
 ## Development
 
 ```bash
