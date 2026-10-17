@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/vitejs/vite-plugin-registry/refs/heads/main/data/schema/extended-package-json.schema.json",
   "name": "ecij",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Zero-runtime CSS-in-JS for Rolldown and Vite: statically extracts css tagged template literals",
   "keywords": [
     "css",
