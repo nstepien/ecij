@@ -57,7 +57,6 @@ interface Scope {
 
 interface Declaration {
   className: string;
-  node: TaggedTemplateExpression;
   /** Scope the template appears in, where its interpolations are resolved. */
   scope: Scope;
 }
@@ -69,7 +68,6 @@ interface Declaration {
 interface CssTagCandidate {
   /** Name of the variable the template is assigned to, if any. */
   name: string | undefined;
-  node: TaggedTemplateExpression;
   /** Scope the template appears in, where the tag and the interpolations are resolved. */
   scope: Scope;
 }
@@ -269,10 +267,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
     const cssTagCandidates = new Map<TaggedTemplateExpression, CssTagCandidate>();
 
     function addCssTagCandidate(node: TaggedTemplateExpression, name?: string) {
-      cssTagCandidates.set(node, { name, node, scope: currentScope });
+      cssTagCandidates.set(node, { name, scope: currentScope });
     }
 
-    function extractCssTagCandidate({ name, node, scope }: CssTagCandidate) {
+    function extractCssTagCandidate(
+      node: TaggedTemplateExpression,
+      { name, scope }: CssTagCandidate,
+    ) {
       // Skip other tags, including local bindings shadowing the imported one
       if (
         node.tag.type !== 'Identifier' ||
@@ -292,7 +293,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
       const className = `${classPrefix}${hash}`;
 
-      declarations.set(node, { className, node, scope });
+      declarations.set(node, { className, scope });
     }
 
     function pushScope(isFunctionScope = false) {
@@ -526,8 +527,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     visitor.visit(parseResult.program);
 
     // Every scope is populated now, so tag shadowing can be decided
-    for (const candidate of cssTagCandidates.values()) {
-      extractCssTagCandidate(candidate);
+    for (const [node, candidate] of cssTagCandidates) {
+      extractCssTagCandidate(node, candidate);
     }
 
     return parsedInfo;
@@ -689,7 +690,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     }
 
     // Build the CSS of each template, resolving its interpolations
-    for (const { className, node, scope } of declarations.values()) {
+    for (const [node, { className, scope }] of declarations) {
       const { quasis, expressions } = node.quasi;
 
       let cssContent = '';
