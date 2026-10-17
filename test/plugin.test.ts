@@ -1140,9 +1140,16 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         \`;
     	return [inBlock, inLoop];
     }
-    var finalModuleCheck = (() => "css-71a1a14d")();
+    function varDestructuringInBlock() {
+    	var { color } = { color: "blue" };
+    	console.log(color);
+    	return css\`
+        color: \${color};
+      \`;
+    }
+    var finalModuleCheck = (() => "css-3e026dbd")();
     //#endregion
-    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, defaultParamScope, defaultParamVsBodyVar, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, stableLet, switchScope, varAfterNestedDeclaration, varDeclaredTemplates, varForIn, varForOf, varInBlock };"
+    export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, defaultParamScope, defaultParamVsBodyVar, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, stableLet, switchScope, varAfterNestedDeclaration, varDeclaredTemplates, varDestructuringInBlock, varForIn, varForOf, varInBlock };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-72a8e6d6 {
@@ -1201,7 +1208,7 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       color: blue;
     }
 
-    .css-71a1a14d {
+    .css-3e026dbd {
       color: red;
       font-size: 16px;
     }/*$vite$:1*/"
@@ -1847,6 +1854,26 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 4647,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "282:   }
+    283:   return css\`
+    284:     color: \${color};
+                      ^
+    285:   \`;
+    286: }",
+        "hook": "transform",
+        "id": "test/fixtures/scoping-advanced.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/scoping-advanced.input.ts",
+          "line": 284,
+        },
+        "message": "skipped CSS extraction — could not resolve "color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 4829,
       },
     ]
   `);

@@ -57,21 +57,17 @@ interface Scope {
 
 interface Declaration {
   className: string;
-  node: TaggedTemplateExpression;
   /** Scope the template appears in, where its interpolations are resolved. */
   scope: Scope;
 }
 
 /**
- * A css`` template found while visiting a file. Whether its tag is shadowed is only decided once
- * the visit completes and every scope is fully populated.
+ * A tagged template found while visiting a file. Whether its tag is ecij's `css` is only decided
+ * once the visit completes and every scope is fully populated.
  */
 interface CssTagCandidate {
-  /** Variable the template is assigned to, if any. */
-  localName: string | undefined;
-  node: TaggedTemplateExpression;
-  /** Local name of the tag, a binding of ecij's `css`. */
-  tagName: string;
+  /** Name of the variable the template is assigned to, if any. */
+  name: string | undefined;
   /** Scope the template appears in, where the tag and the interpolations are resolved. */
   scope: Scope;
 }
@@ -199,18 +195,12 @@ export function ecij(configuration?: Configuration | null): Plugin {
       return parsedFileInfoCache.get(filePath)!;
     }
 
-    // Convert absolute path to project-relative path and normalize to Unix format
-    // to ensure consistent hashes across different build environments (Windows/Unix)
-    const relativePath = relative(PROJECT_ROOT, filePath).replaceAll('\\', '/');
-
     // Read the source file
     const sourceText = code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
 
     const parseResult = parseSync(filePath, sourceText);
-    const declarations = new Map<TaggedTemplateExpression, Declaration>();
     const importedIdentifiers = new Map<string, { source: string; imported: string }>();
     const exportedLocalNames = new Map<string, string>();
-    const processedTaggedTemplateExpressions = new Set<TaggedTemplateExpression>();
     // Local bindings of `css` imported from 'ecij' (including aliases)
     const cssTagNames = new Set<string>();
 
@@ -221,16 +211,6 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // initializer can itself contain declarations, like a function body, so a
     // single slot would be clobbered before the next declarator is visited.
     const variableDeclarationKinds: string[] = [];
-
-    const parsedInfo: ParsedFileInfo = {
-      filePath,
-      declarations,
-      importedIdentifiers,
-      exportedLocalNames,
-      rootScope,
-    };
-
-    parsedFileInfoCache.set(filePath, parsedInfo);
 
     // Collect imports
     for (const staticImport of parseResult.module.staticImports) {
@@ -263,48 +243,48 @@ export function ecij(configuration?: Configuration | null): Plugin {
       }
     }
 
-    // css`` templates in source order, extracted once the visit completes.
-    // Whether the tag is shadowed can only be decided when every scope is fully
-    // populated: `let`/`const`/`class` declarations are hoisted to the top of
-    // their block (TDZ) and `var`/function declarations to their function scope,
-    // so a binding declared *after* the template still shadows the import at
-    // the template's position.
-    const cssTagCandidates: CssTagCandidate[] = [];
+    // Tagged templates in source order, keyed by template. Whether a tag is
+    // ecij's `css` can only be decided when every scope is fully populated:
+    // `let`/`const`/`class` declarations are hoisted to the top of their block
+    // (TDZ) and `var`/function declarations to their function scope, so a
+    // binding declared *after* the template still shadows the import at the
+    // template's position.
+    const cssTagCandidates = new Map<TaggedTemplateExpression, CssTagCandidate>();
 
-    // Records `node` as a css`` candidate if its tag is a local binding of
-    // ecij's `css`; any other tagged template is left alone.
-    function addCssTagCandidate(node: TaggedTemplateExpression, localName?: string) {
-      processedTaggedTemplateExpressions.add(node);
-
-      if (!(node.tag.type === 'Identifier' && cssTagNames.has(node.tag.name))) {
-        return;
-      }
-
-      cssTagCandidates.push({
-        localName,
-        node,
-        tagName: node.tag.name,
-        scope: currentScope,
-      });
+    function addCssTagCandidate(node: TaggedTemplateExpression, name?: string) {
+      cssTagCandidates.set(node, { name, scope: currentScope });
     }
 
-    function extractCssTagCandidate({ localName, node, tagName, scope }: CssTagCandidate) {
-      // A local binding shadowing the imported tag means this is not the ecij tag
-      if (findBindingScope(tagName, scope) !== undefined) {
-        return;
+    function extractCssTagCandidates() {
+      // Convert absolute path to project-relative path and normalize to Unix format
+      // to ensure consistent hashes across different build environments (Windows/Unix)
+      const relativePath = relative(PROJECT_ROOT, filePath).replaceAll('\\', '/');
+      const declarations = new Map<TaggedTemplateExpression, Declaration>();
+
+      for (const [node, { name, scope }] of cssTagCandidates) {
+        // Skip other tags, including local bindings shadowing the imported one
+        if (
+          node.tag.type !== 'Identifier' ||
+          !cssTagNames.has(node.tag.name) ||
+          findBindingScope(node.tag.name, scope) !== undefined
+        ) {
+          continue;
+        }
+
+        const index = declarations.size;
+
+        // Create a hash from the relative file path, index,
+        // and name for consistency across builds.
+        // The index is always used to avoid collisions with other templates
+        // with the same name, or lack thereof, in the same file.
+        const hash = hashText(`${relativePath}:${index}:${name}`);
+
+        const className = `${classPrefix}${hash}`;
+
+        declarations.set(node, { className, scope });
       }
 
-      const index = declarations.size;
-
-      // Create a hash from the relative file path, index,
-      // and identifier for consistency across builds.
-      // The index is always used to avoid collisions with other variables
-      // with the same name in the same file.
-      const hash = hashText(`${relativePath}:${index}:${localName}`);
-
-      const className = `${classPrefix}${hash}`;
-
-      declarations.set(node, { className, node, scope });
+      return declarations;
     }
 
     function pushScope(isFunctionScope = false) {
@@ -527,7 +507,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
       },
 
       TaggedTemplateExpression(node) {
-        if (!processedTaggedTemplateExpressions.has(node)) {
+        // Declarators add their templates first, with the variable name
+        if (!cssTagCandidates.has(node)) {
           // No variable name for inline expressions
           addCssTagCandidate(node);
         }
@@ -536,10 +517,16 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
     visitor.visit(parseResult.program);
 
-    // Every scope is populated now, so tag shadowing can be decided
-    for (const candidate of cssTagCandidates) {
-      extractCssTagCandidate(candidate);
-    }
+    const parsedInfo: ParsedFileInfo = {
+      filePath,
+      // Every scope is populated now, so tag shadowing can be decided
+      declarations: extractCssTagCandidates(),
+      importedIdentifiers,
+      exportedLocalNames,
+      rootScope,
+    };
+
+    parsedFileInfoCache.set(filePath, parsedInfo);
 
     return parsedInfo;
   }
@@ -700,7 +687,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     }
 
     // Build the CSS of each template, resolving its interpolations
-    for (const { className, node, scope } of declarations.values()) {
+    for (const [node, { className, scope }] of declarations) {
       const { quasis, expressions } = node.quasi;
 
       let cssContent = '';
