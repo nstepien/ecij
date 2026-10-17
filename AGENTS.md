@@ -82,6 +82,8 @@ Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtur
 
 The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test stands in for a CSS plugin. Another sends requests to a Vite dev server, which loads modules differently from builds, and edits copies of its fixtures for the server's file watcher to pick up.
 
+`test/package.test.ts` snapshots the files `npm pack` would publish, so it needs `dist` to be built first.
+
 If your changes alter the build output, tests will fail with snapshot mismatches. Review the diff to confirm it matches your intent, then update snapshots with:
 
 ```sh
