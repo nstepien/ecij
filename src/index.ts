@@ -45,8 +45,11 @@ export interface Configuration {
 }
 
 interface Scope {
-  /** `undefined` means "declared but value unknown at build time" (like function params). */
-  identifiers: Map<string, string | undefined>;
+  /**
+   * The initializer of each `const`, resolved on demand, or `undefined` for the bindings whose value
+   * is unknown at build time (like function params).
+   */
+  identifiers: Map<string, Expression | undefined>;
   parent: Scope | null;
   /** `true` for function/module/static-block scopes (where `var` bindings land). */
   isFunctionScope: boolean;
@@ -66,8 +69,6 @@ interface Declaration {
 interface CssTagCandidate {
   /** Variable the template is assigned to, if any. */
   localName: string | undefined;
-  /** Whether that variable is a `const`, the only kind of binding with a static value. */
-  isConst: boolean;
   node: TaggedTemplateExpression;
   /** Local name of the tag, a binding of ecij's `css`. */
   tagName: string;
@@ -75,21 +76,16 @@ interface CssTagCandidate {
   scope: Scope;
 }
 
-/**
- * A `const` declarator, other than of a css`` template, whose value is evaluated once the visit
- * completes, as its initializer may reference a binding declared after it.
- */
-interface ConstDeclarator {
-  localName: string;
-  init: Expression;
-  /** Scope the declarator appears in, where it is bound and its initializer is evaluated. */
-  scope: Scope;
-}
-
 interface ParsedFileInfo {
-  readonly declarations: readonly Declaration[];
+  /** Module id the file was parsed for, which its imports are resolved from. */
+  readonly filePath: string;
+  /** The css`` templates to extract in source order, keyed by template. */
+  readonly declarations: ReadonlyMap<TaggedTemplateExpression, Declaration>;
   readonly importedIdentifiers: ReadonlyMap<string, { source: string; imported: string }>;
-  readonly exportNameToValueMap: ReadonlyMap<string, string>;
+  /** Local names of the exported bindings, keyed by exported name. */
+  readonly exportedLocalNames: ReadonlyMap<string, string>;
+  /** Module-level scope, where the exported bindings are declared. */
+  readonly rootScope: Scope;
 }
 
 // allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, and .tsx files
@@ -114,30 +110,6 @@ function findBindingScope(name: string, scope: Scope): Scope | undefined {
   for (let current: Scope | null = scope; current !== null; current = current.parent) {
     if (current.identifiers.has(name)) return current;
   }
-  return;
-}
-
-// Statically evaluates an expression to its string value:
-// string/number literals and signed number literals (`-5`, `+5`).
-function resolveStaticExpression(expression: Expression): string | undefined {
-  if (
-    expression.type === 'Literal' &&
-    (typeof expression.value === 'string' || typeof expression.value === 'number')
-  ) {
-    return String(expression.value);
-  }
-
-  if (
-    expression.type === 'UnaryExpression' &&
-    (expression.operator === '-' || expression.operator === '+') &&
-    expression.argument.type === 'Literal' &&
-    typeof expression.argument.value === 'number'
-  ) {
-    return String(
-      expression.operator === '-' ? -expression.argument.value : expression.argument.value,
-    );
-  }
-
   return;
 }
 
@@ -235,10 +207,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
     const sourceText = code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
 
     const parseResult = parseSync(filePath, sourceText);
-    const declarations: Declaration[] = [];
+    const declarations = new Map<TaggedTemplateExpression, Declaration>();
     const importedIdentifiers = new Map<string, { source: string; imported: string }>();
-    const exportNameToValueMap = new Map<string, string>();
-    const localNameToExportedNameMap = new Map<string, string>();
+    const exportedLocalNames = new Map<string, string>();
     const processedTaggedTemplateExpressions = new Set<TaggedTemplateExpression>();
     // Local bindings of `css` imported from 'ecij' (including aliases)
     const cssTagNames = new Set<string>();
@@ -252,9 +223,11 @@ export function ecij(configuration?: Configuration | null): Plugin {
     const variableDeclarationKinds: string[] = [];
 
     const parsedInfo: ParsedFileInfo = {
+      filePath,
       declarations,
       importedIdentifiers,
-      exportNameToValueMap,
+      exportedLocalNames,
+      rootScope,
     };
 
     parsedFileInfoCache.set(filePath, parsedInfo);
@@ -285,20 +258,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
         // TODO: support default and namespace exports
         if (entry.exportName.kind === 'Name' && entry.localName.kind === 'Name') {
-          const localName = entry.localName.name!;
-          const exportedName = entry.exportName.name!;
-          localNameToExportedNameMap.set(localName, exportedName);
+          exportedLocalNames.set(entry.exportName.name!, entry.localName.name!);
         }
-      }
-    }
-
-    function recordIdentifierWithValue(localName: string, value: string, scope: Scope) {
-      scope.identifiers.set(localName, value);
-
-      // Only record exports for module-level (root scope) declarations
-      if (scope === rootScope && localNameToExportedNameMap.has(localName)) {
-        const exportedName = localNameToExportedNameMap.get(localName)!;
-        exportNameToValueMap.set(exportedName, value);
       }
     }
 
@@ -310,16 +271,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // the template's position.
     const cssTagCandidates: CssTagCandidate[] = [];
 
-    // `const` declarators in source order, evaluated once the visit completes
-    const constDeclarators: ConstDeclarator[] = [];
-
     // Records `node` as a css`` candidate if its tag is a local binding of
     // ecij's `css`; any other tagged template is left alone.
-    function addCssTagCandidate(
-      node: TaggedTemplateExpression,
-      localName?: string,
-      isConst = false,
-    ) {
+    function addCssTagCandidate(node: TaggedTemplateExpression, localName?: string) {
       processedTaggedTemplateExpressions.add(node);
 
       if (!(node.tag.type === 'Identifier' && cssTagNames.has(node.tag.name))) {
@@ -328,20 +282,19 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
       cssTagCandidates.push({
         localName,
-        isConst,
         node,
         tagName: node.tag.name,
         scope: currentScope,
       });
     }
 
-    function extractCssTagCandidate({ localName, isConst, node, tagName, scope }: CssTagCandidate) {
+    function extractCssTagCandidate({ localName, node, tagName, scope }: CssTagCandidate) {
       // A local binding shadowing the imported tag means this is not the ecij tag
       if (findBindingScope(tagName, scope) !== undefined) {
         return;
       }
 
-      const index = declarations.length;
+      const index = declarations.size;
 
       // Create a hash from the relative file path, index,
       // and identifier for consistency across builds.
@@ -351,29 +304,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
       const className = `${classPrefix}${hash}`;
 
-      declarations.push({ className, node, scope });
-
-      // Record generated class names for `const` css declarations, which are
-      // bound in the scope of their template (a `let`/`var` one stays unknown)
-      if (localName !== undefined && isConst) {
-        recordIdentifierWithValue(localName, className, scope);
-      }
-    }
-
-    // Records the value of a `const` declarator if its initializer is a static
-    // expression or a binding with a known value, and returns whether it did
-    function evaluateConstDeclarator({ localName, init, scope }: ConstDeclarator): boolean {
-      const value =
-        init.type === 'Identifier'
-          ? findBindingScope(init.name, scope)?.identifiers.get(init.name)
-          : resolveStaticExpression(init);
-
-      if (value === undefined) {
-        return false;
-      }
-
-      recordIdentifierWithValue(localName, value, scope);
-      return true;
+      declarations.set(node, { className, node, scope });
     }
 
     function pushScope(isFunctionScope = false) {
@@ -583,15 +514,15 @@ export function ecij(configuration?: Configuration | null): Plugin {
         // and a `var` is `undefined` until its declaration has run.
         const isConst = variableDeclarationKinds.at(-1) === 'const';
 
-        // Record as unknown value so it shadows outer variables. A `const` gets
-        // its value once the visit completes: the class name of its css``
-        // template, or the value of its initializer.
-        targetScope.identifiers.set(localName, undefined);
+        // Record the initializer of a `const`, resolved on demand, or an unknown
+        // value: either way, the binding shadows outer variables
+        targetScope.identifiers.set(
+          localName,
+          isConst && node.init !== null ? node.init : undefined,
+        );
 
         if (node.init?.type === 'TaggedTemplateExpression') {
-          addCssTagCandidate(node.init, localName, isConst);
-        } else if (isConst && node.init !== null) {
-          constDeclarators.push({ localName, init: node.init, scope: targetScope });
+          addCssTagCandidate(node.init, localName);
         }
       },
 
@@ -608,19 +539,6 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Every scope is populated now, so tag shadowing can be decided
     for (const candidate of cssTagCandidates) {
       extractCssTagCandidate(candidate);
-    }
-
-    // `const` values come next, so that they may reference class names. An initializer may
-    // also reference a `const` evaluated after it, so they are evaluated in rounds, until a
-    // round makes no progress: the values left are unknown, like those of a cycle.
-    for (let pending = constDeclarators; pending.length !== 0;) {
-      const unevaluated = pending.filter((declarator) => !evaluateConstDeclarator(declarator));
-
-      if (unevaluated.length === pending.length) {
-        break;
-      }
-
-      pending = unevaluated;
     }
 
     return parsedInfo;
@@ -641,7 +559,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     cssContent: string;
     stylesheetDependencies: Set<string>;
   }> {
-    const { declarations, importedIdentifiers } = await parseFile(context, filePath, code);
+    const parsedInfo = await parseFile(context, filePath, code);
+    const { declarations } = parsedInfo;
 
     const extractions: Array<{
       start: number;
@@ -651,27 +570,59 @@ export function ecij(configuration?: Configuration | null): Plugin {
     }> = [];
     const stylesheetDependencies = new Set<string>();
 
-    // Helper to resolve a value from an identifier, walking up the scope chain
-    async function resolveValue(identifierName: string, scope: Scope): Promise<string | undefined> {
-      const bindingScope = findBindingScope(identifierName, scope);
+    // Values of the `const` bindings resolved so far, unknown ones included, keyed by initializer.
+    // A binding is cached as unknown while it is resolved, so that a cycle stays unknown. The cache
+    // is not shared with other transforms, as values read through imports can change in between.
+    const constValues = new Map<Expression, string | undefined>();
+
+    // Statically evaluates an expression of a file, like an interpolation or the initializer of a
+    // `const`, to its string value: a string or number literal, including signed numbers (`-5`,
+    // `+5`), or an identifier bound to such a value or to a class name, in the file or imported
+    async function resolveValue(
+      expression: Expression,
+      scope: Scope,
+      fileInfo: ParsedFileInfo,
+    ): Promise<string | undefined> {
+      if (
+        expression.type === 'Literal' &&
+        (typeof expression.value === 'string' || typeof expression.value === 'number')
+      ) {
+        return String(expression.value);
+      }
+
+      if (
+        expression.type === 'UnaryExpression' &&
+        (expression.operator === '-' || expression.operator === '+') &&
+        expression.argument.type === 'Literal' &&
+        typeof expression.argument.value === 'number'
+      ) {
+        return String(
+          expression.operator === '-' ? -expression.argument.value : expression.argument.value,
+        );
+      }
+
+      if (expression.type !== 'Identifier') {
+        return;
+      }
+
+      // Walk up the scope chain to find the identifier
+      const bindingScope = findBindingScope(expression.name, scope);
 
       if (bindingScope !== undefined) {
-        // May return undefined for declarations with unknown values (like function params),
-        // which stops the lookup and signals "can't resolve"
-        return bindingScope.identifiers.get(identifierName);
+        return resolveBinding(expression.name, bindingScope, fileInfo);
       }
 
       // Check if it's an imported identifier
-      if (importedIdentifiers.has(identifierName)) {
-        const { source, imported } = importedIdentifiers.get(identifierName)!;
+      if (fileInfo.importedIdentifiers.has(expression.name)) {
+        const { source, imported } = fileInfo.importedIdentifiers.get(expression.name)!;
 
         // Resolve the import path relative to the importer
-        const resolvedId = await context.resolve(source, filePath);
+        const resolvedId = await context.resolve(source, fileInfo.filePath);
 
         if (resolvedId != null) {
           const { id } = resolvedId;
 
-          // Record the dependency so that editing the imported module updates this one
+          // Record the dependency so that editing the imported module updates the transformed one
           let dependents = dependentsPerFile.get(id);
 
           if (dependents === undefined) {
@@ -697,13 +648,23 @@ export function ecij(configuration?: Configuration | null): Plugin {
             }
           }
 
-          const { exportNameToValueMap } = await parseFile(context, id);
+          const importedFileInfo = await parseFile(context, id);
+          const localName = importedFileInfo.exportedLocalNames.get(imported);
 
-          if (exportNameToValueMap.has(imported)) {
-            if (stylesheetImportPerFile.has(id)) {
-              stylesheetDependencies.add(stylesheetImportPerFile.get(id)!);
+          // Only bindings declared in the module are resolved, not the imports it exports
+          if (localName !== undefined) {
+            const value = await resolveBinding(
+              localName,
+              importedFileInfo.rootScope,
+              importedFileInfo,
+            );
+
+            if (value !== undefined) {
+              if (stylesheetImportPerFile.has(id)) {
+                stylesheetDependencies.add(stylesheetImportPerFile.get(id)!);
+              }
+              return value;
             }
-            return exportNameToValueMap.get(imported)!;
           }
         }
       }
@@ -711,8 +672,35 @@ export function ecij(configuration?: Configuration | null): Plugin {
       return;
     }
 
+    // Resolves the binding `name` declared in `scope`: a `const` takes the class name of its css``
+    // template or the value of its initializer. Other bindings have unknown values (like function
+    // params), which stops the lookup and signals "can't resolve".
+    async function resolveBinding(
+      name: string,
+      scope: Scope,
+      fileInfo: ParsedFileInfo,
+    ): Promise<string | undefined> {
+      const init = scope.identifiers.get(name);
+
+      if (init === undefined) {
+        return;
+      }
+
+      if (init.type === 'TaggedTemplateExpression') {
+        // Templates whose tag is not ecij's `css` have no class name
+        return fileInfo.declarations.get(init)?.className;
+      }
+
+      if (!constValues.has(init)) {
+        constValues.set(init, undefined);
+        constValues.set(init, await resolveValue(init, scope, fileInfo));
+      }
+
+      return constValues.get(init);
+    }
+
     // Build the CSS of each template, resolving its interpolations
-    for (const { className, node, scope } of declarations) {
+    for (const { className, node, scope } of declarations.values()) {
       const { quasis, expressions } = node.quasi;
 
       let cssContent = '';
@@ -724,10 +712,19 @@ export function ecij(configuration?: Configuration | null): Plugin {
         if (i < expressions.length) {
           const expression = expressions[i]!;
 
-          let resolvedValue = resolveStaticExpression(expression);
+          const resolvedValue = await resolveValue(expression, scope, parsedInfo);
 
           if (resolvedValue === undefined) {
-            if (expression.type !== 'Identifier') {
+            if (expression.type === 'Identifier') {
+              // Cannot resolve - skip this entire css`` block
+              context.warn(
+                {
+                  pluginCode: 'UNRESOLVED_INTERPOLATION',
+                  message: `skipped CSS extraction — could not resolve "${expression.name}" to a static string or number`,
+                },
+                expression.start,
+              );
+            } else {
               // Complex expression - skip this entire css`` block
               context.warn(
                 {
@@ -737,24 +734,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
                 },
                 expression.start,
               );
-              allResolved = false;
-              break;
             }
 
-            resolvedValue = await resolveValue(expression.name, scope);
-
-            if (resolvedValue === undefined) {
-              // Cannot resolve - skip this entire css`` block
-              context.warn(
-                {
-                  pluginCode: 'UNRESOLVED_INTERPOLATION',
-                  message: `skipped CSS extraction — could not resolve "${expression.name}" to a static string or number`,
-                },
-                expression.start,
-              );
-              allResolved = false;
-              break;
-            }
+            allResolved = false;
+            break;
           }
 
           cssContent += resolvedValue;
