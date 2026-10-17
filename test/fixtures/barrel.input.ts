@@ -8,7 +8,7 @@ import { css } from 'ecij';
 // - `aClass` is also reachable through a nested barrel, but should still resolve
 //   to the same value (two star paths to the *same* binding are not ambiguous).
 // - `dColor` is only reachable through the nested barrel (depth-2 `export *`).
-import { aColor, aClass, bColor, bClass, shared, dColor } from './barrel';
+import { aColor, aClass, bColor, bClass, shared, dColor } from './barrel-index';
 
 export const usesBarrelA = css`
   /* uses-a */

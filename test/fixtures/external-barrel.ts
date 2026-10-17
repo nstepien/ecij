@@ -4,3 +4,5 @@
 // resolution must skip it gracefully and find the value in the next source.
 export * from '@acme/tokens';
 export * from './external-tokens';
+// An explicit re-export of an external module is not followed either
+export { accentColor as externalAccent } from '@acme/tokens';

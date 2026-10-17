@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  "ignorePatterns": ["/test/fixtures/"],
+
+  "options": {
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "warn",
+    "respectEslintDisableDirectives": false,
+    "typeAware": true
+  },
+
+  "plugins": [
+    "eslint",
+    "import",
+    "jsdoc",
+    "node",
+    "oxc",
+    "promise",
+    "typescript",
+    "unicorn",
+    "vitest"
+  ],
+
+  "env": {
+    "builtin": true
+  },
+
+  "categories": {
+    "correctness": "warn",
+    "perf": "warn",
+    "suspicious": "warn"
+  },
+
+  "rules": {
+    "eslint/no-await-in-loop": "off",
+    "eslint/no-shadow": "off",
+    "typescript/consistent-return": "off",
+    "typescript/no-unsafe-type-assertion": "off",
+    // TODO: enable
+    "unicorn/consistent-function-scoping": "off"
+  }
+}

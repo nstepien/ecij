@@ -59,3 +59,17 @@ namespace Aliased {
   `;
 }
 console.log(Aliased.usesAlias);
+
+// A dotted namespace binds its first name, and ambient declarations bind nothing
+namespace Dotted.Inner {
+  export const spec = 'wrong';
+}
+console.log(Dotted.Inner.spec);
+
+declare global {
+  var ambientSpec: string;
+}
+
+declare module 'virtual:ambient' {
+  export const spec: string;
+}

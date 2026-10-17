@@ -30,3 +30,9 @@ export const namespaceReexportAsScalar = css`
 export const starDefaultAsScalar = css`
   color: ${starOnly.default};
 `;
+
+// `${ns.member.length}` — only namespaces have members to resolve, not the
+// values they export.
+export const memberOfValue = css`
+  color: ${namedStyles.accentColor.length};
+`;

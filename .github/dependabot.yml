@@ -6,6 +6,11 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    # Skip the default 3-day cooldown for peer dependencies to catch compatibility issues early
+    cooldown:
+      exclude:
+        - 'rolldown'
+        - 'vite'
     groups:
       dependencies:
         patterns:
@@ -13,6 +18,12 @@ updates:
         update-types:
           - 'minor'
           - 'patch'
+      vitest:
+        patterns:
+          - 'vitest'
+          - '@vitest/coverage-v8'
+        update-types:
+          - 'major'
 
   - package-ecosystem: 'github-actions'
     directory: '/'

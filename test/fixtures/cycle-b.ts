@@ -1,10 +1,9 @@
 import { css } from 'ecij';
 
-import { aClass } from './cycle-a.input';
+import { aClass } from './cycle-a';
 
-export const bClass = css`
-  /* cycle-b */
-  &.${aClass} {
-    color: green;
+export const bClass: string = css`
+  .${aClass} {
+    color: blue;
   }
 `;

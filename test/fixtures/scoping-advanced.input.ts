@@ -25,10 +25,9 @@ export const arrowParamShadow = (color: string) => {
 // =============================================
 // 3. Arrow expression body with parameter
 // =============================================
-export const arrowExprParam = (color: string) =>
-  css`
-    color: ${color};
-  `;
+export const arrowExprParam = (color: string) => css`
+  color: ${color};
+`;
 
 // =============================================
 // 4. Param does NOT affect non-shadowed variables
@@ -46,11 +45,9 @@ export function paramPartialShadow(color: string) {
 export function forOfShadow() {
   for (const color of ['blue', 'green']) {
     // color is a for-of variable → unknown value → NOT extracted
-    console.log(
-      css`
-        color: ${color};
-      `,
-    );
+    console.log(css`
+      color: ${color};
+    `);
   }
   // After loop, module-level color should resolve
   return css`
@@ -63,11 +60,9 @@ export function forOfShadow() {
 // =============================================
 export function forInShadow() {
   for (const color in { blue: 1 }) {
-    console.log(
-      css`
-        color: ${color};
-      `,
-    );
+    console.log(css`
+      color: ${color};
+    `);
   }
   return css`
     color: ${color};
@@ -82,11 +77,9 @@ export function catchShadow() {
     throw new Error();
   } catch (color: unknown) {
     // color is catch param → unknown value → NOT extracted
-    console.log(
-      css`
-        color: ${color as string};
-      `,
-    );
+    console.log(css`
+      color: ${color as string};
+    `);
   }
   // After catch, module-level color should resolve
   return css`
@@ -130,14 +123,12 @@ export function defaultParam(color = 'blue') {
 // 11. For-statement init variable (classic for loop)
 // =============================================
 export function forStatementShadow() {
-  for (let color = 'blue', i = 0; i < 1; i++) {
+  for (let color = 'blue'; color !== 'done'; color = 'done') {
     // color is a `let` of the for-scope: it shadows module-level color and, not
     // being a `const`, is never resolved
-    console.log(
-      css`
-        color: ${color};
-      `,
-    );
+    console.log(css`
+      color: ${color};
+    `);
   }
   // After loop, module-level should resolve
   return css`
@@ -249,11 +240,9 @@ export function objectDestructuring() {
 // =============================================
 export function forOfDestructuring() {
   for (const [color] of [['blue']] as const) {
-    console.log(
-      css`
-        color: ${color};
-      `,
-    );
+    console.log(css`
+      color: ${color};
+    `);
   }
   return css`
     color: ${color};
@@ -292,11 +281,9 @@ export function varInBlock() {
 // =============================================
 export function varForOf() {
   for (var color of ['blue', 'green']) {
-    console.log(
-      css`
-        color: ${color};
-      `,
-    );
+    console.log(css`
+      color: ${color};
+    `);
   }
   // var color hoists to function scope with unknown value → NOT extracted
   return css`
@@ -309,11 +296,9 @@ export function varForOf() {
 // =============================================
 export function varForIn() {
   for (var color in { blue: 1 }) {
-    console.log(
-      css`
-        color: ${color};
-      `,
-    );
+    console.log(css`
+      color: ${color};
+    `);
   }
   // var color hoists to function scope with unknown value → NOT extracted
   return css`
@@ -360,11 +345,9 @@ export function switchScope(value: string) {
   switch (value) {
     case 'a': {
       const color = 'blue';
-      console.log(
-        css`
-          color: ${color};
-        `,
-      );
+      console.log(css`
+        color: ${color};
+      `);
       break;
     }
     default:
@@ -460,7 +443,29 @@ export function defaultParamVsBodyVar(
 }
 
 // =============================================
-// 36. Module-level check: everything should still resolve
+// 36. var-declared templates resolve their interpolations where they appear
+// =============================================
+// The `var` binding itself is never resolved, but the template is still
+// extracted, with its interpolations evaluated in the scope of the template.
+export function varDeclaredTemplates() {
+  {
+    const color = 'blue';
+    // color is the block's 'blue', not the module's 'red'
+    var inBlock = css`
+      color: ${color};
+    `;
+  }
+  for (const color of ['green', 'purple']) {
+    // the loop variable has no static value → NOT extracted
+    var inLoop = css`
+      color: ${color};
+    `;
+  }
+  return [inBlock, inLoop!];
+}
+
+// =============================================
+// 37. Module-level check: everything should still resolve
 // =============================================
 export const finalModuleCheck = css`
   color: ${color};
