@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
 import { rolldown, type OutputAsset, type RolldownLog } from 'rolldown';
-import { build, createServer, type BuildEnvironmentOptions } from 'vite';
+import { build, createServer, type BuildEnvironmentOptions, type DevEnvironment } from 'vite';
 import { expect, test } from 'vitest';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
@@ -83,6 +83,20 @@ async function createDevServer(root: string) {
   });
 
   return Object.assign(server, { [Symbol.asyncDispose]: () => server.close() });
+}
+
+// The code of a module served by a dev server environment
+async function getCode(environment: DevEnvironment, url: string) {
+  return (await environment.transformRequest(url))!.code;
+}
+
+// The IDs of the stylesheets that a module imports, its own last
+async function getStylesheets(environment: DevEnvironment, url: string) {
+  const code = await getCode(environment, url);
+  return code
+    .matchAll(/^import "(.+\.css)";$/gm)
+    .map(([, id]) => id!)
+    .toArray();
 }
 
 test('comprehensive CSS-in-JS patterns', async () => {
@@ -297,27 +311,14 @@ test.for([
     await using server = await createDevServer(fixtures.path);
     const { client } = server.environments;
 
-    async function getCode(url: string) {
-      return (await client.transformRequest(url))!.code;
-    }
-
-    // The IDs of the stylesheets that a module imports, its own last
-    async function getStylesheets(url: string) {
-      const code = await getCode(url);
-      return code
-        .matchAll(/^import "(.+\.css)";$/gm)
-        .map(([, id]) => id!)
-        .toArray();
-    }
-
     // Request modules before their importers, like when an app also imports them elsewhere.
     // Vite then reuses the transforms of the importers of an edited module, only updating
     // their imports.
     await client.transformRequest('/tokens.ts');
-    const [previousStylesheet] = await getStylesheets('/button.ts');
+    const [previousStylesheet] = await getStylesheets(client, '/button.ts');
 
     // card.ts interpolates a class name of button.ts, so it imports its stylesheet first
-    await expect(getStylesheets('/card.ts')).resolves.toStrictEqual([
+    await expect(getStylesheets(client, '/card.ts')).resolves.toStrictEqual([
       previousStylesheet,
       expect.any(String),
     ]);
@@ -327,12 +328,32 @@ test.for([
     // Request card.ts first, like a browser requests importers before their imports, so that
     // its transform runs before the one of button.ts registers a new stylesheet. It must not
     // import the previous one, which has the previous CSS, once the server picks up the edit.
-    await expect.poll(() => getStylesheets('/card.ts')).not.toContain(previousStylesheet);
+    await expect.poll(() => getStylesheets(client, '/card.ts')).not.toContain(previousStylesheet);
 
-    const [stylesheet] = await getStylesheets('/button.ts');
-    await expect(getCode(stylesheet!)).resolves.toContain(css);
+    const [stylesheet] = await getStylesheets(client, '/button.ts');
+    await expect(getCode(client, stylesheet!)).resolves.toContain(css);
   },
 );
+
+test('update the CSS of an edited module that no CSS depends on in the Vite dev server', async () => {
+  await using fixtures = await mkdtempDisposable('./test/fixtures/edits-');
+  await cp('./test/fixtures/edits', fixtures.path, { recursive: true });
+  await using server = await createDevServer(fixtures.path);
+  const { client } = server.environments;
+
+  const previousStylesheet = (await getStylesheets(client, '/card.ts')).at(-1);
+
+  // Nothing interpolates the values of card.ts, so the plugin leaves its update to Vite
+  await appendFile(
+    join(fixtures.path, 'card.ts'),
+    '\nexport const titleClass = css`font-weight: bold;`;\n',
+  );
+
+  await expect.poll(() => getStylesheets(client, '/card.ts')).not.toContain(previousStylesheet);
+
+  const stylesheet = (await getStylesheets(client, '/card.ts')).at(-1);
+  await expect(getCode(client, stylesheet!)).resolves.toContain('font-weight: bold');
+});
 
 test('generate hash based on file path relative to root and file name to avoid name conflicts', async () => {
   const fixturePath = './test/fixtures/identical.input.ts';
