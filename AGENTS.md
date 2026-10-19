@@ -88,7 +88,7 @@ The caches are cleared in `buildEnd`, which the dev server only calls when it cl
 
 Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`.
 
-The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test stands in for a CSS plugin. Another sends requests to a Vite dev server, which loads modules differently from builds, and edits copies of its fixtures for the server's file watcher to pick up.
+The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test stands in for a CSS plugin. Others send requests to a Vite dev server, which loads modules differently from builds, and edit copies of their fixtures for the server's file watcher to pick up.
 
 If your changes alter the build output, tests will fail with snapshot mismatches. Review the diff to confirm it matches your intent, then update snapshots with:
 

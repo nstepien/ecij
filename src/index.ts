@@ -452,8 +452,12 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // to the code passed in after it has been processed by other plugins;
     // as such, we cannot rely on the position of declarations being the same,
     // and the new code should be parsed.
-    if (code === undefined && parsedFileInfoCache.has(filePath)) {
-      return parsedFileInfoCache.get(filePath)!;
+    if (code === undefined) {
+      const cachedInfo = parsedFileInfoCache.get(filePath);
+
+      if (cachedInfo !== undefined) {
+        return cachedInfo;
+      }
     }
 
     // Read the source file
@@ -560,12 +564,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
     const parsedInfo = await parseFile(context, filePath, code);
     const { declarations } = parsedInfo;
 
-    const extractions: Array<{
-      start: number;
-      end: number;
-      className: string;
-      cssContent: string;
-    }> = [];
+    // Created with the first extraction, so files without any are returned untouched
+    let magicString: RolldownMagicString | null = null;
+    // CSS module content, in the source order of the declarations
+    let cssContent = '';
     const stylesheetDependencies = new Set<string>();
 
     // Values of the `const` bindings resolved so far, unknown ones included, keyed by initializer.
@@ -611,8 +613,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
       }
 
       // Check if it's an imported identifier
-      if (fileInfo.importedIdentifiers.has(expression.name)) {
-        const { source, imported } = fileInfo.importedIdentifiers.get(expression.name)!;
+      const importedIdentifier = fileInfo.importedIdentifiers.get(expression.name);
+
+      if (importedIdentifier !== undefined) {
+        const { source, imported } = importedIdentifier;
 
         // Resolve the import path relative to the importer
         const resolvedId = await context.resolve(source, fileInfo.filePath);
@@ -658,8 +662,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
             );
 
             if (value !== undefined) {
-              if (stylesheetImportPerFile.has(id)) {
-                stylesheetDependencies.add(stylesheetImportPerFile.get(id)!);
+              const stylesheetImport = stylesheetImportPerFile.get(id);
+
+              if (stylesheetImport !== undefined) {
+                stylesheetDependencies.add(stylesheetImport);
               }
               return value;
             }
@@ -701,11 +707,11 @@ export function ecij(configuration?: Configuration | null): Plugin {
     for (const [node, { className, scope }] of declarations) {
       const { quasis, expressions } = node.quasi;
 
-      let cssContent = '';
+      let templateCss = '';
       let allResolved = true;
 
       for (let i = 0; i < quasis.length; i++) {
-        cssContent += quasis[i]!.value.raw;
+        templateCss += quasis[i]!.value.raw;
 
         if (i < expressions.length) {
           const expression = expressions[i]!;
@@ -738,56 +744,40 @@ export function ecij(configuration?: Configuration | null): Plugin {
             break;
           }
 
-          cssContent += resolvedValue;
+          templateCss += resolvedValue;
         }
       }
 
       // Only extract the template if all its interpolations were resolved
-      if (allResolved) {
-        extractions.push({
-          start: node.start,
-          end: node.end,
-          className,
-          cssContent: cssContent.trim(),
-        });
+      if (!allResolved) {
+        continue;
+      }
+
+      // Apply replacements through a magic string,
+      // so an accurate sourcemap can be generated for the edits
+      magicString ??= meta.magicString ?? new RolldownMagicString(code);
+
+      // Emit each class name as an IIFE instead of a literal to prevent issues with tree-shaking
+      // (see inlineConst tests): `optimization.inlineConst` inlines string and template literal
+      // constants, and once all used exports of a `sideEffects: false` module are inlined, the
+      // module is dropped along with its stylesheet import. Rolldown does not evaluate calls as
+      // constants, yet still treats the IIFE as side-effect-free, and minifiers fold it back to a
+      // plain string. Do not annotate it with `@__PURE__`: terser does not inline annotated IIFEs.
+      // Related upstream issues (Vite's own CSS Modules lose their CSS the same way):
+      // https://github.com/vitejs/vite/issues/22344
+      // https://github.com/rolldown/rolldown/issues/8100
+      magicString.overwrite(node.start, node.end, `(() => ${JSON.stringify(className)})()`);
+
+      templateCss = templateCss.trim();
+
+      if (templateCss !== '') {
+        if (cssContent !== '') {
+          cssContent += '\n\n';
+        }
+
+        cssContent += `.${className} {\n  ${templateCss}\n}`;
       }
     }
-
-    if (extractions.length === 0) {
-      return {
-        magicString: null,
-        cssContent: '',
-        stylesheetDependencies,
-      };
-    }
-
-    // Apply replacements through a magic string,
-    // so an accurate sourcemap can be generated for the edits
-    const magicString = meta.magicString ?? new RolldownMagicString(code);
-
-    // Emit each class name as an IIFE instead of a literal to prevent issues with tree-shaking
-    // (see inlineConst tests): `optimization.inlineConst` inlines string and template literal
-    // constants, and once all used exports of a `sideEffects: false` module are inlined, the
-    // module is dropped along with its stylesheet import. Rolldown does not evaluate calls as
-    // constants, yet still treats the IIFE as side-effect-free, and minifiers fold it back to a
-    // plain string. Do not annotate it with `@__PURE__`: terser does not inline annotated IIFEs.
-    // Related upstream issues (Vite's own CSS Modules lose their CSS the same way):
-    // https://github.com/vitejs/vite/issues/22344
-    // https://github.com/rolldown/rolldown/issues/8100
-    for (const { start, end, className } of extractions) {
-      magicString.overwrite(start, end, `(() => ${JSON.stringify(className)})()`);
-    }
-
-    // Generate CSS module content, in the source order of the declarations
-    const cssBlocks = [];
-
-    for (const { className, cssContent } of extractions) {
-      if (cssContent !== '') {
-        cssBlocks.push(`.${className} {\n  ${cssContent}\n}`);
-      }
-    }
-
-    const cssContent = cssBlocks.join('\n\n');
 
     return {
       magicString,
@@ -821,13 +811,20 @@ export function ecij(configuration?: Configuration | null): Plugin {
     },
 
     hotUpdate({ file, modules }) {
+      const dependents = dependentsPerFile.get(file);
+
+      // Leave the update to Vite when no CSS depends on the edited module
+      if (dependents === undefined) {
+        return;
+      }
+
       // Vite reuses the transforms of the modules that import an edited module, only updating
       // their imports. Update the modules that interpolate its values as if they were edited,
       // as they import its stylesheet and their CSS may change, and the modules that interpolate
       // their class names, as they import their stylesheets.
       const updatedModules = new Set(modules);
 
-      for (const dependentId of dependentsPerFile.get(file) ?? []) {
+      for (const dependentId of dependents) {
         for (const id of [dependentId, ...(dependentsPerFile.get(dependentId) ?? [])]) {
           for (const moduleNode of this.environment.moduleGraph.getModulesByFile(id) ?? []) {
             updatedModules.add(moduleNode);
@@ -894,22 +891,22 @@ export function ecij(configuration?: Configuration | null): Plugin {
           extractedCssPerFile.set(cssModuleId, cssContent);
           stylesheetImportPerFile.set(id, cssModuleId);
 
-          const importStatements: string[] = [];
+          let importStatements = '';
 
           // Import the stylesheets of the modules whose class names were interpolated into
           // the CSS above, ahead of this module's own. These statements are prepended to the
           // file, so leaving them out would emit this module's CSS before the CSS it
           // references, inverting the cascade.
           for (const id of stylesheetDependencies) {
-            importStatements.push(`import ${JSON.stringify(id)};\n`);
+            importStatements += `import ${JSON.stringify(id)};\n`;
           }
 
           // use JSON.stringify to properly escape the module ID,
           // including \ delimiters on Windows.
-          importStatements.push(`import ${JSON.stringify(cssModuleId)};\n`);
+          importStatements += `import ${JSON.stringify(cssModuleId)};\n`;
 
           // Add side-effect/CSS module imports at the top of the file.
-          magicString.prepend(importStatements.join(''));
+          magicString.prepend(importStatements);
         }
 
         // Rolldown provides a magic string and generates the sourcemap natively. Vite does not
