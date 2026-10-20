@@ -49,7 +49,7 @@
     "@jridgewell/trace-mapping": "^0.3.31",
     "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "^5.0.5",
-    "oxfmt": "^0.73.0",
+    "oxfmt": "^0.74.0",
     "oxlint": "^1.88.0",
     "oxlint-tsgolint": "^7.0.2004",
     "publint": "^0.3.25",
