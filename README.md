@@ -98,14 +98,14 @@ The `ecij()` plugin accepts an optional configuration object:
 ```ts
 export interface Configuration {
   /**
-   * Include patterns for files to process, matched against the module id.
+   * Include patterns for files to process, matched against the module ID.
    *
    * @default `/\.[cm]?[jt]sx?$/`
    */
   include?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
-   * Exclude patterns for files to skip, matched against the module id.
+   * Exclude patterns for files to skip, matched against the module ID.
    *
    * @default `[/\/node_modules\//, /\.d\.ts$/]`
    */

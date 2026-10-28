@@ -21,14 +21,14 @@ import type { Plugin as VitePlugin } from 'vite';
  */
 export interface Configuration {
   /**
-   * Include patterns for files to process, matched against the module id.
+   * Include patterns for files to process, matched against the module ID.
    *
    * @default `/\.[cm]?[jt]sx?$/`
    */
   include?: string | RegExp | ReadonlyArray<string | RegExp> | undefined | null;
 
   /**
-   * Exclude patterns for files to skip, matched against the module id.
+   * Exclude patterns for files to skip, matched against the module ID.
    *
    * @default `[/\/node_modules\//, /\.d\.ts$/]`
    */
@@ -74,7 +74,7 @@ interface CssTagCandidate {
 }
 
 interface ParsedFileInfo {
-  /** Module id the file was parsed for, which its imports are resolved from. */
+  /** Module ID the file was parsed for, which its imports are resolved from. */
   readonly filePath: string;
   /** The css`` templates to extract in source order, keyed by template. */
   readonly declarations: ReadonlyMap<TaggedTemplateExpression, Declaration>;
@@ -85,14 +85,14 @@ interface ParsedFileInfo {
   readonly rootScope: Scope;
 }
 
-// allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, and .tsx files
+// Allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, and .tsx files
 const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 
-// disallow /node_modules/ and .d.ts files
+// Disallow /node_modules/ and .d.ts files
 const NODE_MODULES_REGEX = /\/node_modules\//;
 const D_TS_FILE_REGEX = /\.d\.ts$/;
 
-// match the generated stylesheet IDs, like /src/Button.tsx.1a2b3c4d.css
+// Match the generated stylesheet IDs, like /src/Button.tsx.1a2b3c4d.css
 const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 
 // Get the project root directory
@@ -188,7 +188,7 @@ function recordParams(params: ParamPattern[]) {
   }
 }
 
-// Visit AST to collect declarations and literal values
+// Visit the AST to record the bindings of each scope and the tagged templates
 const SCOPE_VISITOR = new Visitor({
   BlockStatement(node) {
     // A function body is where its `var` declarations hoist to. Parameter
@@ -401,7 +401,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
    * Generated CSS module IDs for each source file, imported ahead of the stylesheet of any
    * module that interpolates its class names, to preserve the cascade order.
    *
-   * Key: module id, Value: CSS module id
+   * Key: module ID, Value: CSS module ID
    */
   const stylesheetImportPerFile = new Map<string, string>();
 
@@ -415,14 +415,14 @@ export function ecij(configuration?: Configuration | null): Plugin {
   /**
    * The modules whose CSS interpolates values exported by each module.
    *
-   * Key: module id, Value: ids of the modules interpolating its values
+   * Key: module ID, Value: IDs of the modules interpolating its values
    */
   const dependentsPerFile = new Map<string, Set<string>>();
 
   /**
    * The module that each running transform is waiting for through `this.load()`.
    *
-   * Key: module id, Value: module id
+   * Key: module ID, Value: module ID
    */
   const pendingLoads = new Map<string, string>();
 
@@ -577,7 +577,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
     // Statically evaluates an expression of a file, like an interpolation or the initializer of a
     // `const`, to its string value: a string or number literal, including signed numbers (`-5`,
-    // `+5`), or an identifier bound to such a value or to a class name, in the file or imported
+    // `+5`), or an identifier bound to such a value or to a class name, in the file or imported.
     async function resolveValue(
       expression: Expression,
       scope: Scope,
@@ -720,7 +720,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
           if (resolvedValue === undefined) {
             if (expression.type === 'Identifier') {
-              // Cannot resolve - skip this entire css`` block
+              // Cannot resolve — skip this entire css`` block
               context.warn(
                 {
                   pluginCode: 'UNRESOLVED_INTERPOLATION',
@@ -729,7 +729,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
                 expression.start,
               );
             } else {
-              // Complex expression - skip this entire css`` block
+              // Complex expression — skip this entire css`` block
               context.warn(
                 {
                   pluginCode: 'COMPLEX_INTERPOLATION',
@@ -901,8 +901,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
             importStatements += `import ${JSON.stringify(id)};\n`;
           }
 
-          // use JSON.stringify to properly escape the module ID,
-          // including \ delimiters on Windows.
+          // Use JSON.stringify to properly escape the module ID,
+          // including \ separators on Windows.
           importStatements += `import ${JSON.stringify(cssModuleId)};\n`;
 
           // Add side-effect/CSS module imports at the top of the file.

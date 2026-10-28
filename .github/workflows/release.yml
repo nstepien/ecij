@@ -18,7 +18,7 @@ permissions: {}
 
 cache-mode: none
 
-# One release at a time, never cancelled midway
+# One release at a time, never canceled midway
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
