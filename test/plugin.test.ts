@@ -111,7 +111,7 @@ test('comprehensive CSS-in-JS patterns', async () => {
   // - Nested interpolations
   // - Inline CSS (not assigned to a variable)
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/comprehensive.input.ts
+    "// test/fixtures/comprehensive.input.ts
     var buttonClass = (() => "css-39ccb25d")();
     var primaryClass = (() => "css-7a998145")();
     var secondaryClass = (() => "css-6c03a746")();
@@ -120,7 +120,6 @@ test('comprehensive CSS-in-JS patterns', async () => {
     function getButtonClass() {
     	return (() => "css-6c89bbd7")();
     }
-    //#endregion
     export { buttonClass, getButtonClass, importedClass, nestedClass, primaryClass, secondaryClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
@@ -243,7 +242,7 @@ test('support plain Rolldown builds', async () => {
 
   expect(logs).toMatchInlineSnapshot(`[]`);
   expect(chunk.code).toMatchInlineSnapshot(`
-    "//#region test/fixtures/comprehensive.input.ts
+    "// test/fixtures/comprehensive.input.ts
     const buttonClass = (() => "css-39ccb25d")();
     const primaryClass = (() => "css-7a998145")();
     const secondaryClass = (() => "css-6c03a746")();
@@ -252,7 +251,6 @@ test('support plain Rolldown builds', async () => {
     function getButtonClass() {
     	return (() => "css-6c89bbd7")();
     }
-    //#endregion
     export { buttonClass, getButtonClass, importedClass, nestedClass, primaryClass, secondaryClass };
 
     //# sourceMappingURL=comprehensive.input.js.map"
@@ -360,12 +358,10 @@ test('generate hash based on file path relative to root and file name to avoid n
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/identical-first.ts
+    "// test/fixtures/identical-first.ts
     var myClass = (() => "css-3f848070")();
-    //#endregion
-    //#region test/fixtures/identical-second.ts
+    // test/fixtures/identical-second.ts
     var myClass$1 = (() => "css-5a57e4d1")();
-    //#endregion
     export { myClass as firstClass, myClass$1 as secondClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
@@ -383,15 +379,14 @@ test('ignore non-ecij css tag functions', async () => {
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/fake.ts
+    "// test/fixtures/fake.ts
     function css(_) {
     	return "";
     }
     function unrelated(_) {
     	return "";
     }
-    //#endregion
-    //#region test/fixtures/no-ecij.input.ts
+    // test/fixtures/no-ecij.input.ts
     var unknown = unrelated\`this is not css\`;
     var buttonClass = css\`
       color: blue;
@@ -403,7 +398,6 @@ test('ignore non-ecij css tag functions', async () => {
         padding: 8px 16px;
       \`;
     }
-    //#endregion
     export { buttonClass, getButtonClass, unknown };"
   `);
 
@@ -417,12 +411,11 @@ test('skip css blocks with complex interpolations', async () => {
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region index.js
+    "// index.js
     function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
-    //#endregion
-    //#region test/fixtures/complex-interpolation.input.ts
+    // test/fixtures/complex-interpolation.input.ts
     var dynamicClass = css\`
       color: \${Math.random() > .5 ? "red" : "blue"};
       padding: 10px;
@@ -430,7 +423,6 @@ test('skip css blocks with complex interpolations', async () => {
     var unresolvedIdentifierClass = css\`
       color: \${unknownVariable};
     \`;
-    //#endregion
     export { dynamicClass, unresolvedIdentifierClass };"
   `);
 
@@ -486,12 +478,11 @@ test('inline string and number literal interpolations', async () => {
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region index.js
+    "// index.js
     function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
-    //#endregion
-    //#region test/fixtures/literal-interpolation.input.ts
+    // test/fixtures/literal-interpolation.input.ts
     var stringLiteralClass = (() => "css-1c8f4a51")();
     var numberLiteralClass = (() => "css-25b58437")();
     var mixedClass = (() => "css-0a775b56")();
@@ -501,7 +492,6 @@ test('inline string and number literal interpolations', async () => {
     var booleanLiteralClass = css\`
       color: \${true};
     \`;
-    //#endregion
     export { booleanLiteralClass, mixedClass, negativeNumberClass, numberLiteralClass, signedConstClass, stringLiteralClass, unaryPlusClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
@@ -563,12 +553,11 @@ test('resolve const bindings of other const bindings', async () => {
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region index.js
+    "// index.js
     function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
-    //#endregion
-    //#region test/fixtures/const-alias.input.ts
+    // test/fixtures/const-alias.input.ts
     var aliasedValueClass = (() => "css-5c4bfb3e")();
     var aliasedClassNameClass = (() => "css-c73dd446")();
     function scopedAliases() {
@@ -586,7 +575,6 @@ test('resolve const bindings of other const bindings', async () => {
         color: \${second};
       \`;
     }
-    //#endregion
     export { aliasedClassNameClass, aliasedValueClass, cyclicAliases, importedAliasesClass, scopedAliases, unresolvedAlias };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
@@ -671,9 +659,8 @@ test('skip empty css blocks', async () => {
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/empty-css.input.ts
+    "// test/fixtures/empty-css.input.ts
     var emptyClass = (() => "css-f993173e")();
-    //#endregion
     export { emptyClass };"
   `);
 
@@ -687,12 +674,11 @@ test('variable scoping and shadowing', async () => {
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region index.js
+    "// index.js
     function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
-    //#endregion
-    //#region test/fixtures/scoping.input.ts
+    // test/fixtures/scoping.input.ts
     var topLevelStyle = (() => "css-0195f7e3")();
     function functionShadow() {
     	return (() => "css-411204c9")();
@@ -768,7 +754,6 @@ test('variable scoping and shadowing', async () => {
     	};
     }
     var finalModuleStyle = (() => "css-157eeb32")();
-    //#endregion
     export { afterArrowShadow, afterFunctionShadow, afterMultiShadow, afterNestedFunctions, afterVarDecl, arrowShadow, blockScope, deeplyNested, finalModuleStyle, functionShadow, level1, multiShadow, sequentialBlocks, shadowsCssClass, shadowsImport, topLevelStyle, usesBaseClass, usesImport, usesImportedClass, varDeclaration };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
@@ -945,12 +930,11 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
   const result = await buildWithPlugin(fixturePath);
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region index.js
+    "// index.js
     function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
-    //#endregion
-    //#region test/fixtures/scoping-advanced.input.ts
+    // test/fixtures/scoping-advanced.input.ts
     function paramShadow(color) {
     	return css\`
         color: \${color};
@@ -1169,7 +1153,6 @@ test('advanced scoping: function parameters, for-of/in, catch, static blocks', a
       \`;
     }
     var finalModuleCheck = (() => "css-3e026dbd")();
-    //#endregion
     export { MyClass, afterClassExpr, arrayDestructuring, arrayRestShadow, arrowExprParam, arrowParamShadow, booleanLiteralShadow, catchShadow, classDeclShadow, classExprName, classExprNameInner, defaultParam, defaultParamScope, defaultParamVsBodyVar, destructuredParam, finalModuleCheck, fnDeclShadow, fnExprName, fnExprNameInner, forInShadow, forOfDestructuring, forOfShadow, forStatementShadow, letNoInit, nonCssTaggedShadow, nonLiteralInit, objectDestructuring, objectRestShadow, paramPartialShadow, paramShadow, restParamShadow, stableLet, switchScope, varAfterNestedDeclaration, varDeclaredTemplates, varDestructuringInBlock, varForIn, varForOf, varInBlock };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
@@ -1908,7 +1891,7 @@ test('hoisted local bindings declared after the template shadow the (aliased) cs
   // whose tag is not shadowed are extracted; the others keep calling the local
   // binding they refer to at runtime
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/tag-shadow-hoisting.input.ts
+    "// test/fixtures/tag-shadow-hoisting.input.ts
     function laterConst() {
     	const shadowed = styled\`
         color: red;
@@ -1961,7 +1944,6 @@ test('hoisted local bindings declared after the template shadow the (aliased) cs
     	return extracted;
     }
     var moduleLevel = (() => "css-cc02a132")();
-    //#endregion
     export { enclosingScope, laterClass, laterConst, laterFunction, laterVar, moduleLevel, nestedBlock, selfReference };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
@@ -1991,10 +1973,8 @@ test.for([true, { mode: 'all' }] as const)(
     });
 
     expect(result.js).toMatchInlineSnapshot(`
-      "//#endregion
-      //#region test/fixtures/inline-const.ts
-      console.log((() => "css-90f511d6")());
-      //#endregion"
+      "// test/fixtures/inline-const.ts
+      console.log((() => "css-90f511d6")());"
     `);
     expect(result.css).toMatchInlineSnapshot(`
       ".css-90f511d6 {
@@ -2017,10 +1997,8 @@ test('keep extracted CSS when class names are inlined through a barrel', async (
   });
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#endregion
-    //#region test/fixtures/inline-const-barrel.ts
-    console.log((() => "css-90f511d6")());
-    //#endregion"
+    "// test/fixtures/inline-const-barrel.ts
+    console.log((() => "css-90f511d6")());"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-90f511d6 {
@@ -2066,10 +2044,8 @@ test('fold class names back into plain strings when minifying', async () => {
   });
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#endregion
-    //#region test/fixtures/inline-const.ts
-    console.log("css-90f511d6");
-    //#endregion"
+    "// test/fixtures/inline-const.ts
+    console.log("css-90f511d6");"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-90f511d6{border:1px solid #00f;padding:10px}
@@ -2085,9 +2061,8 @@ test('classPrefix setting', async () => {
   });
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/basic.input.ts
+    "// test/fixtures/basic.input.ts
     var basicClass = (() => "custom_90f511d6")();
-    //#endregion
     export { basicClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
@@ -2105,9 +2080,8 @@ test("build modules that interpolate each other's class names", async () => {
   const result = await buildWithPlugin('./test/fixtures/cycle-a.ts');
 
   expect(result.js).toMatchInlineSnapshot(`
-    "//#region test/fixtures/cycle-a.ts
+    "// test/fixtures/cycle-a.ts
     var aClass = (() => "css-61fbc555")();
-    //#endregion
     export { aClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
