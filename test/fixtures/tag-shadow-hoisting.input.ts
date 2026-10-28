@@ -3,7 +3,7 @@ import { css as styled } from 'ecij';
 // Bindings are hoisted to the top of their scope: a local `styled` declared
 // *after* a template still shadows the ecij tag at the template's position, so
 // none of the shadowed templates below may be extracted. At runtime they hit a
-// TDZ error, a hoisted function or an unassigned `var` — never ecij's `css`.
+// TDZ error, a hoisted function, or an unassigned `var` — never ecij's `css`.
 
 export function laterConst() {
   // @ts-expect-error -- used before its declaration (TDZ at runtime)
