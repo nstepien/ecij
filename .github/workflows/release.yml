@@ -44,6 +44,7 @@ jobs:
         with:
           node-version: lts/*
           check-latest: true
+          package-manager-cache: false
 
       - name: Check that the tag is on main
         run: git merge-base --is-ancestor HEAD origin/main
@@ -100,6 +101,7 @@ jobs:
         with:
           node-version: lts/*
           check-latest: true
+          package-manager-cache: false
           registry-url: 'https://registry.npmjs.org'
 
       - name: Download build
