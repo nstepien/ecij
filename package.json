@@ -18,7 +18,8 @@
   "files": [
     "dist",
     "index.d.ts",
-    "index.js"
+    "index.js",
+    "src"
   ],
   "type": "module",
   "sideEffects": false,

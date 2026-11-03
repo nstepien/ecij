@@ -7,6 +7,8 @@ export default defineConfig({
     cleanDir: true,
     // Lets coverage report src/index.ts lines when CI tests the build
     sourcemap: true,
+    // The package publishes src/index.ts, so the map does not embed a copy
+    sourcemapExcludeSources: true,
   },
   platform: 'node',
   treeshake: {
