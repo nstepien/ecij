@@ -5,6 +5,8 @@ export default defineConfig({
   input: './src/index.ts',
   output: {
     cleanDir: true,
+    // Lets coverage report src/index.ts lines when CI tests the build
+    sourcemap: true,
   },
   platform: 'node',
   treeshake: {
@@ -16,6 +18,7 @@ export default defineConfig({
   external: (id) => !id.startsWith('.'),
   plugins: [
     dts({
+      sourcemap: true,
       tsconfig: 'tsconfig.src.json',
     }),
   ],

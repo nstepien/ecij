@@ -86,7 +86,7 @@ The caches are cleared in `buildEnd`, which the dev server only calls when it cl
 
 ## Testing
 
-Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`.
+Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`. Locally, they import the plugin from `src/index.ts`. In CI, they import the build in `dist`, whose source map keeps the coverage report on `src/index.ts` lines.
 
 The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test adds a stand-in CSS plugin. Others send requests to a Vite dev server, which loads modules differently from builds, and edit copies of their fixtures for the server's file watcher to pick up.
 
