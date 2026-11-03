@@ -16,7 +16,7 @@ export default defineConfig({
   external: (id) => !id.startsWith('.'),
   plugins: [
     dts({
-      build: true,
+      tsc: { build: true },
       tsconfig: 'tsconfig.src.json',
     }),
   ],
