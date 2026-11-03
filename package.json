@@ -72,12 +72,12 @@
     "packageManager": {
       "name": "npm",
       "version": "^12.2.1",
-      "onFail": "download"
+      "onFail": "ignore"
     },
     "runtime": {
       "name": "node",
       "version": "^26.13.0",
-      "onFail": "download"
+      "onFail": "ignore"
     }
   },
   "compatiblePackages": {
