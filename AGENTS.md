@@ -67,7 +67,7 @@ When the CSS interpolates values imported from another module, `transform` reads
 
 The caches are cleared in `buildEnd`, which the dev server only calls when it closes. There, `watchChange` forgets the parse of an edited module and the stylesheets that change with it, and the Vite-only `hotUpdate` hook adds the modules whose CSS depends on it to the update, as Vite would otherwise reuse their transforms and only update their imports. `transform` records these dependencies in `dependentsPerFile` as it resolves imported values.
 
-Vitest's `fsModuleCache`, on by default since Vitest 5, reuses transformed modules across runs without calling `transform`, so their stylesheets would be missing, and it only keys a module on its own content, while its CSS can depend on the values it imports. The `configureVitest` hook keeps every module that references `ecij` out of that cache, like the `code` filter of `transform`. Vitest 4.1 names the API `experimental_defineCacheKeyGenerator`.
+Vitest's `fsModuleCache`, on by default since Vitest 5, reuses transformed modules across runs without calling `transform`, so their stylesheets would be missing, and it only keys a module on its own content, while its CSS can depend on the values it imports. The `configureVitest` hook keeps every module that references `ecij` out of that cache, like the `code` filter of `transform`.
 
 ## Package Metadata
 

@@ -15,6 +15,7 @@ import { RolldownMagicString, type Plugin, type TransformPluginContext } from 'r
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
 import { parseSync, Visitor } from 'rolldown/utils';
 import type { Plugin as VitePlugin } from 'vite';
+import type { VitestPluginContext } from 'vitest/node';
 
 /**
  * Options for the {@link ecij} plugin.
@@ -83,17 +84,6 @@ interface ParsedFileInfo {
   readonly exportedLocalNames: ReadonlyMap<string, string>;
   /** Module-level scope, where the exported bindings are declared. */
   readonly rootScope: Scope;
-}
-
-type CacheKeyGenerator = (context: { sourceCode: string }) => false | undefined;
-
-/**
- * The part of the context of Vitest's `configureVitest` hook that the plugin uses. Vitest 4.1 only
- * provides `experimental_defineCacheKeyGenerator`, which Vitest 5 renamed.
- */
-interface VitestPluginContext {
-  defineCacheKeyGenerator?: (generator: CacheKeyGenerator) => void;
-  experimental_defineCacheKeyGenerator: (generator: CacheKeyGenerator) => void;
 }
 
 // Allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, and .tsx files
@@ -847,13 +837,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
       return [...updatedModules];
     },
 
-    configureVitest(context) {
+    configureVitest({ defineCacheKeyGenerator }) {
       // Vitest's `fsModuleCache` reuses transformed modules across runs without calling
       // `transform`, which registers their stylesheets, and only keys them on their own content,
       // while their CSS can depend on the values they import. Keep the modules that `transform`
       // handles out of it, like its `code` filter.
-      (context.defineCacheKeyGenerator ?? context.experimental_defineCacheKeyGenerator)(
-        ({ sourceCode }) => (sourceCode.includes('ecij') ? false : undefined),
+      defineCacheKeyGenerator(({ sourceCode }) =>
+        sourceCode.includes('ecij') ? false : undefined,
       );
     },
 
