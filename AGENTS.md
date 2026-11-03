@@ -49,7 +49,7 @@ Workflows pin every action to a full commit SHA with its version in a comment, w
 ### Entry Points
 
 - `index.js` / `index.d.ts` — Runtime export (`ecij` package). Exports a `css` tagged template function that provides types for editor support but throws at runtime — if the plugin is misconfigured or cannot statically extract a `css` call, the throw ensures broken styles fail loudly rather than silently shipping broken code.
-- `src/index.ts` → `dist/index.js` / `dist/index.d.ts` — Plugin export (`ecij/plugin`). The Rolldown/Vite plugin that performs static CSS extraction. This single file contains the entire plugin implementation.
+- `src/index.ts` → `dist/index.js` / `dist/index.d.ts` — Plugin export (`ecij/plugin`). The Rolldown/Vite plugin that performs static CSS extraction. This single file contains the entire plugin implementation. The package also publishes `src/index.ts`, which the source maps of both files point to.
 
 ### Plugin Pipeline
 
@@ -86,7 +86,7 @@ The caches are cleared in `buildEnd`, which the dev server only calls when it cl
 
 ## Testing
 
-Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`.
+Tests use **Vitest** with inline snapshots. Test files are in `test/` and fixtures in `test/fixtures/`. Locally, they import the plugin from `src/index.ts`. In CI, they import the build in `dist`, whose source map keeps the coverage report on `src/index.ts` lines.
 
 The test suite (`test/plugin.test.ts`) runs integration tests by invoking a Vite build with the ecij plugin and asserting on the JS and CSS output using `toMatchInlineSnapshot()`. One test runs a plain Rolldown build instead, as it is the only way to cover the native `meta.magicString` path; Rolldown no longer bundles CSS, so that test adds a stand-in CSS plugin. Others send requests to a Vite dev server, which loads modules differently from builds, and edit copies of their fixtures for the server's file watcher to pick up.
 
