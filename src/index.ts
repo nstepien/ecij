@@ -85,6 +85,17 @@ interface ParsedFileInfo {
   readonly rootScope: Scope;
 }
 
+type CacheKeyGenerator = (context: { sourceCode: string }) => false | undefined;
+
+/**
+ * The part of the context of Vitest's `configureVitest` hook that the plugin uses. Vitest 4.1 only
+ * provides `experimental_defineCacheKeyGenerator`, which Vitest 5 renamed.
+ */
+interface VitestPluginContext {
+  defineCacheKeyGenerator?: (generator: CacheKeyGenerator) => void;
+  experimental_defineCacheKeyGenerator: (generator: CacheKeyGenerator) => void;
+}
+
 // Allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, and .tsx files
 const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 
@@ -786,8 +797,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
     };
   }
 
-  // Rolldown's plugin type does not include Vite's hooks, which Rolldown ignores
-  const plugin: Plugin & Pick<VitePlugin, 'hotUpdate'> = {
+  // Rolldown's plugin type does not include the hooks of Vite and Vitest, which Rolldown ignores
+  const plugin: Plugin &
+    Pick<VitePlugin, 'hotUpdate'> & { configureVitest(context: VitestPluginContext): void } = {
     name: 'ecij',
 
     buildEnd() {
@@ -833,6 +845,16 @@ export function ecij(configuration?: Configuration | null): Plugin {
       }
 
       return [...updatedModules];
+    },
+
+    configureVitest(context) {
+      // Vitest's `fsModuleCache` reuses transformed modules across runs without calling
+      // `transform`, which registers their stylesheets, and only keys them on their own content,
+      // while their CSS can depend on the values they import. Keep the modules that `transform`
+      // handles out of it, like its `code` filter.
+      (context.defineCacheKeyGenerator ?? context.experimental_defineCacheKeyGenerator)(
+        ({ sourceCode }) => (sourceCode.includes('ecij') ? false : undefined),
+      );
     },
 
     resolveId: {
