@@ -575,6 +575,58 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // is not shared with other transforms, as values read through imports can change in between.
     const constValues = new Map<Expression, string | undefined>();
 
+    // The modules that interpolated values are imported from, keyed by importer and import
+    // source, so that each one is resolved, loaded, and parsed once per transform
+    const importedModules = new Map<string, ReturnType<typeof resolveImportedModule>>();
+
+    function loadImportedModule(source: string, importer: string) {
+      const key = `${importer}\0${source}`;
+      let importedModule = importedModules.get(key);
+
+      if (importedModule === undefined) {
+        importedModule = resolveImportedModule(source, importer);
+        importedModules.set(key, importedModule);
+      }
+
+      return importedModule;
+    }
+
+    async function resolveImportedModule(source: string, importer: string) {
+      // Resolve the import path relative to the importer
+      const resolvedId = await context.resolve(source, importer);
+      if (resolvedId == null) return;
+
+      const { id } = resolvedId;
+
+      // Record the dependency so that editing the imported module updates the transformed one
+      let dependents = dependentsPerFile.get(id);
+
+      if (dependents === undefined) {
+        dependents = new Set();
+        dependentsPerFile.set(id, dependents);
+      }
+
+      dependents.add(filePath);
+
+      // Wait for the imported module's transform, which registers the stylesheet that
+      // `resolveValue` imports. Vite's dev server does not transform modules loaded this way,
+      // so there the stylesheet is only imported once that module has been transformed.
+      // Loading a module whose transform waits for this one would never finish, which
+      // happens when modules interpolate each other's class names. Its stylesheet is then
+      // not registered yet, but values come from the module's parse either way.
+      if (!isWaitingFor(id, filePath)) {
+        pendingLoads.set(filePath, id);
+
+        try {
+          await context.load(resolvedId);
+        } finally {
+          pendingLoads.delete(filePath);
+        }
+      }
+
+      return { id, importedFileInfo: await parseFile(context, id) };
+    }
+
     // Statically evaluates an expression of a file, like an interpolation or the initializer of a
     // `const`, to its string value: a string or number literal, including signed numbers (`-5`,
     // `+5`), or an identifier bound to such a value or to a class name, in the file or imported.
@@ -617,40 +669,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
       if (importedIdentifier !== undefined) {
         const { source, imported } = importedIdentifier;
+        const loadedModule = await loadImportedModule(source, fileInfo.filePath);
 
-        // Resolve the import path relative to the importer
-        const resolvedId = await context.resolve(source, fileInfo.filePath);
-
-        if (resolvedId != null) {
-          const { id } = resolvedId;
-
-          // Record the dependency so that editing the imported module updates the transformed one
-          let dependents = dependentsPerFile.get(id);
-
-          if (dependents === undefined) {
-            dependents = new Set();
-            dependentsPerFile.set(id, dependents);
-          }
-
-          dependents.add(filePath);
-
-          // Wait for the imported module's transform, which registers the stylesheet imported
-          // below. Vite's dev server does not transform modules loaded this way, so there the
-          // stylesheet is only imported once that module has been transformed.
-          // Loading a module whose transform waits for this one would never finish, which
-          // happens when modules interpolate each other's class names. Its stylesheet is then
-          // not registered yet, but values come from the module's parse either way.
-          if (!isWaitingFor(id, filePath)) {
-            pendingLoads.set(filePath, id);
-
-            try {
-              await context.load(resolvedId);
-            } finally {
-              pendingLoads.delete(filePath);
-            }
-          }
-
-          const importedFileInfo = await parseFile(context, id);
+        if (loadedModule !== undefined) {
+          const { id, importedFileInfo } = loadedModule;
           const localName = importedFileInfo.exportedLocalNames.get(imported);
 
           // Only bindings declared in the module are resolved, not the imports it exports
