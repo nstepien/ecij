@@ -85,6 +85,9 @@ interface ParsedFileInfo {
   readonly rootScope: Scope;
 }
 
+// Languages the parser can be told to parse a module as, see `meta.moduleType`
+type ParseLang = 'js' | 'jsx' | 'ts' | 'tsx';
+
 // Allow .js, .cjs, .mjs, .ts, .cts, .mts, .jsx, and .tsx files
 const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 
@@ -95,11 +98,19 @@ const D_TS_FILE_REGEX = /\.d\.ts$/;
 // Match the generated stylesheet IDs, like /src/Button.tsx.1a2b3c4d.css
 const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 
+const PARSE_LANGS: ReadonlySet<string> = new Set<ParseLang>(['js', 'jsx', 'ts', 'tsx']);
+
 // Get the project root directory
 const PROJECT_ROOT = cwd();
 
 function hashText(text: string): string {
   return hash('md5', text).slice(0, 8);
+}
+
+// The language a module was assigned, if the parser can parse it as such. Otherwise the parser
+// infers it from the file name.
+function parseLangOf(moduleType: string): ParseLang | undefined {
+  return PARSE_LANGS.has(moduleType) ? (moduleType as ParseLang) : undefined;
 }
 
 // The innermost scope of the chain that binds `name`, shadowing outer bindings and imports.
@@ -447,6 +458,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     context: TransformPluginContext,
     filePath: string,
     code?: string,
+    lang?: ParseLang,
   ): Promise<ParsedFileInfo> {
     // The code loaded from `readFile` might not be identical
     // to the code passed in after it has been processed by other plugins;
@@ -463,7 +475,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Read the source file
     const sourceText = code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
 
-    const parseResult = parseSync(filePath, sourceText);
+    // Parse the code as the language the module was assigned, like JSX in a .js file
+    const parseResult = parseSync(filePath, sourceText, lang === undefined ? undefined : { lang });
     const importedIdentifiers = new Map<string, { source: string; imported: string }>();
     const exportedLocalNames = new Map<string, string>();
     // Local bindings of `css` imported from 'ecij' (including aliases)
@@ -555,13 +568,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
     context: TransformPluginContext,
     code: string,
     filePath: string,
-    meta: { magicString?: RolldownMagicString },
+    meta: { magicString?: RolldownMagicString; moduleType: string },
   ): Promise<{
     magicString: RolldownMagicString | null;
     cssContent: string;
     stylesheetDependencies: Set<string>;
   }> {
-    const parsedInfo = await parseFile(context, filePath, code);
+    const parsedInfo = await parseFile(context, filePath, code, parseLangOf(meta.moduleType));
     const { declarations } = parsedInfo;
 
     // Created with the first extraction, so files without any are returned untouched
