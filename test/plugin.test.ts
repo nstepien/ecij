@@ -102,13 +102,13 @@ async function createTestRunner(root: string) {
     { cacheDir: join(root, '.vite'), logLevel: 'silent', plugins: [ecij()] },
   );
 
-  return Object.assign(vitest, { [Symbol.asyncDispose]: () => vitest.close() });
+  return { vitest, [Symbol.asyncDispose]: () => vitest.close() };
 }
 
 // The state and errors of each test module, run by a new test runner
 async function runTests(root: string) {
   await using runner = await createTestRunner(root);
-  const { testModules } = await runner.start();
+  const { testModules } = await runner.vitest.start();
   return testModules.map((testModule) => ({
     state: testModule.state(),
     errors: testModule.errors().map((error) => error.message),
