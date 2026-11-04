@@ -22,6 +22,13 @@ jobs:
           # Unlike `27`, this range also matches the alphas that precede 27.0.0
           - node-version: '27'
             node-version-range: '^27.0.0-0'
+          # arm64 only runs the newest Node, and new combinations don't get the entry above
+          - os: ubuntu-24.04-arm
+            node-version: '27'
+            node-version-range: '^27.0.0-0'
+          - os: windows-11-arm
+            node-version: '27'
+            node-version-range: '^27.0.0-0'
 
     steps:
       - name: Checkout repository
