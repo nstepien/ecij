@@ -1,7 +1,7 @@
 // File without any ecij usage
 import { css, unrelated } from './fake';
 
-// ignore unrelated tagged template literals
+// Ignore unrelated tagged template literals
 export const unknown = unrelated`this is not css`;
 
 // Ignore non-ecij css tag functions

@@ -3,7 +3,7 @@
  *
  * At build time the plugin moves the CSS into a separate stylesheet and replaces the tag with the
  * generated class name, so nothing of `css` is left in the bundle. Interpolations must be
- * statically resolvable — string or number literals, identifiers holding one, or class names
+ * statically resolvable — string or number literals, `const` bindings holding one, or class names
  * produced by another `css` tag, including values imported from other modules.
  *
  * @returns The generated class name.

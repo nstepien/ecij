@@ -21,7 +21,7 @@ export const secondaryClass = css`
   color: green;
 `;
 
-// empty CSS blocks do not produce any CSS output
+// Empty CSS blocks do not produce any CSS output
 const emptyClass = css``;
 
 // Local variable interpolation

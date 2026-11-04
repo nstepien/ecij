@@ -2,7 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "module": "nodenext",
-    "types": ["node"]
+    "types": ["node", "vitest/config"]
   },
   "include": ["src/**/*"]
 }

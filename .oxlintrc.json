@@ -36,8 +36,6 @@
     "eslint/no-await-in-loop": "off",
     "eslint/no-shadow": "off",
     "typescript/consistent-return": "off",
-    "typescript/no-unsafe-type-assertion": "off",
-    // TODO: enable
-    "unicorn/consistent-function-scoping": "off"
+    "typescript/no-unsafe-type-assertion": "off"
   }
 }
