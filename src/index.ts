@@ -6,6 +6,7 @@ import type {
   BindingPattern,
   BlockStatement,
   Expression,
+  ModuleExportName,
   ParamPattern,
   Program,
   SwitchCase,
@@ -111,6 +112,11 @@ function hashText(text: string): string {
 // infers it from the file name.
 function parseLangOf(moduleType: string): ParseLang | undefined {
   return PARSE_LANGS.has(moduleType) ? (moduleType as ParseLang) : undefined;
+}
+
+// The name of an imported or exported binding, which can be a string: `export { a as "b" }`
+function nameOf(name: ModuleExportName): string {
+  return name.type === 'Literal' ? name.value : name.name;
 }
 
 // The innermost scope of the chain that binds `name`, shadowing outer bindings and imports.
@@ -476,20 +482,25 @@ export function ecij(configuration?: Configuration | null): Plugin {
     const sourceText = code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
 
     // Parse the code as the language the module was assigned, like JSX in a .js file
-    const parseResult = parseSync(filePath, sourceText, lang === undefined ? undefined : { lang });
+    const { program } = parseSync(filePath, sourceText, lang === undefined ? undefined : { lang });
     const importedIdentifiers = new Map<string, { source: string; imported: string }>();
     const exportedLocalNames = new Map<string, string>();
     // Local bindings of `css` imported from 'ecij' (including aliases)
     const cssTagNames = new Set<string>();
 
-    // Collect imports
-    for (const staticImport of parseResult.module.staticImports) {
-      for (const entry of staticImport.entries) {
-        // TODO: support default and namespace imports
-        if (entry.importName.kind === 'Name') {
-          const source = staticImport.moduleRequest.value;
-          const imported = entry.importName.name!;
-          const localName = entry.localName.value;
+    // Collect the imports and exports from the top-level statements. The parse result's module
+    // record lists them too, but converting it to JS objects takes longer than this loop, and
+    // `SCOPE_VISITOR` would also visit the declarations nested in TypeScript namespaces.
+    for (const statement of program.body) {
+      if (statement.type === 'ImportDeclaration') {
+        const source = statement.source.value;
+
+        for (const specifier of statement.specifiers) {
+          // TODO: support default and namespace imports
+          if (specifier.type !== 'ImportSpecifier') continue;
+
+          const imported = nameOf(specifier.imported);
+          const localName = specifier.local.name;
 
           if (source === 'ecij' && imported === 'css') {
             cssTagNames.add(localName);
@@ -497,25 +508,29 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
           importedIdentifiers.set(localName, { source, imported });
         }
-      }
-    }
-
-    // Collect exports
-    for (const staticExport of parseResult.module.staticExports) {
-      for (const entry of staticExport.entries) {
+      } else if (statement.type === 'ExportNamedDeclaration') {
         // TODO: handle re-exports
-        if (entry.importName.kind !== 'None') continue;
+        if (statement.source !== null) continue;
 
-        // TODO: support default and namespace exports
-        if (entry.exportName.kind === 'Name' && entry.localName.kind === 'Name') {
-          exportedLocalNames.set(entry.exportName.name!, entry.localName.name!);
+        for (const specifier of statement.specifiers) {
+          exportedLocalNames.set(nameOf(specifier.exported), nameOf(specifier.local));
+        }
+
+        // Only variables can be bound to static values, not functions or classes
+        if (statement.declaration?.type === 'VariableDeclaration') {
+          for (const { id } of statement.declaration.declarations) {
+            if (id.type === 'Identifier') {
+              exportedLocalNames.set(id.name, id.name);
+            }
+          }
         }
       }
+      // TODO: support default exports
     }
 
     // Scope tracking: root scope for module-level declarations
     const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
-    const cssTagCandidates = visitProgram(parseResult.program, rootScope);
+    const cssTagCandidates = visitProgram(program, rootScope);
 
     // Convert absolute path to project-relative path and normalize to Unix format
     // to ensure consistent hashes across different build environments (Windows/Unix)

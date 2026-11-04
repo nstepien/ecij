@@ -751,6 +751,47 @@ test('resolve const bindings of other const bindings', async () => {
   `);
 });
 
+test('resolve imports named by strings, and skip unsupported import and export forms', async () => {
+  const fixturePath = './test/fixtures/import-forms.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "// index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    // test/fixtures/imported-literals.ts
+    var fontWeight = "bold";
+    // test/fixtures/import-forms-helper.ts
+    var color = "teal";
+    var { destructured } = { destructured: "navy" };
+    // test/fixtures/import-forms.input.ts
+    var stringNameClass = (() => "css-3dcf2108")();
+    var defaultImportClass = css\`
+      color: \${color};
+    \`;
+    var destructuredExportClass = css\`
+      color: \${destructured};
+    \`;
+    var reexportClass = css\`
+      font-weight: \${fontWeight};
+    \`;
+    export { defaultImportClass, destructuredExportClass, reexportClass, stringNameClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-3dcf2108 {
+      color: teal;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs.map((log) => log.message)).toMatchInlineSnapshot(`
+    [
+      "skipped CSS extraction — could not resolve "defaultColor" to a static string or number",
+      "skipped CSS extraction — could not resolve "destructured" to a static string or number",
+      "skipped CSS extraction — could not resolve "reexported" to a static string or number",
+    ]
+  `);
+});
+
 test('skip empty css blocks', async () => {
   const fixturePath = './test/fixtures/empty-css.input.ts';
   const result = await buildWithPlugin(fixturePath);
