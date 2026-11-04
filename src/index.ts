@@ -14,8 +14,7 @@ import type {
 import { RolldownMagicString, type Plugin, type TransformPluginContext } from 'rolldown';
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
 import { parseSync, Visitor } from 'rolldown/utils';
-import type { Plugin as VitePlugin } from 'vite';
-import type { VitestPluginContext } from 'vitest/node';
+import type { Vite } from 'vitest/node';
 
 /**
  * Options for the {@link ecij} plugin.
@@ -788,8 +787,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
   }
 
   // Rolldown's plugin type does not include the hooks of Vite and Vitest, which Rolldown ignores
-  const plugin: Plugin &
-    Pick<VitePlugin, 'hotUpdate'> & { configureVitest(context: VitestPluginContext): void } = {
+  const plugin: Plugin & Pick<Vite.Plugin, 'hotUpdate' | 'configureVitest'> = {
     name: 'ecij',
 
     buildEnd() {
