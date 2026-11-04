@@ -5,14 +5,20 @@ on:
     branches: [main]
   pull_request:
 
-permissions:
-  contents: read
+permissions: {}
+
+cache-mode: none
+
+env:
+  FORCE_COLOR: 1
 
 jobs:
   test:
     name: Test (Node ${{ matrix.node-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
+    permissions:
+      contents: read # Check out the repository
     strategy:
       fail-fast: false
       matrix:
@@ -61,6 +67,8 @@ jobs:
     name: Audit workflows
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read # Check out the repository
 
     steps:
       - name: Checkout repository
