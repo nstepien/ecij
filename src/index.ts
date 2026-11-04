@@ -577,9 +577,21 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
     // The modules that interpolated values are imported from, keyed by importer and import
     // source, so that each one is resolved, loaded, and parsed once per transform
-    const importedModules = new Map<string, ReturnType<typeof loadImportedModule>>();
+    const importedModules = new Map<string, ReturnType<typeof resolveImportedModule>>();
 
-    async function loadImportedModule(source: string, importer: string) {
+    function loadImportedModule(source: string, importer: string) {
+      const key = `${importer}\0${source}`;
+      let importedModule = importedModules.get(key);
+
+      if (importedModule === undefined) {
+        importedModule = resolveImportedModule(source, importer);
+        importedModules.set(key, importedModule);
+      }
+
+      return importedModule;
+    }
+
+    async function resolveImportedModule(source: string, importer: string) {
       // Resolve the import path relative to the importer
       const resolvedId = await context.resolve(source, importer);
       if (resolvedId == null) return;
@@ -657,15 +669,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
       if (importedIdentifier !== undefined) {
         const { source, imported } = importedIdentifier;
-        const key = `${fileInfo.filePath}\0${source}`;
-        let importedModule = importedModules.get(key);
-
-        if (importedModule === undefined) {
-          importedModule = loadImportedModule(source, fileInfo.filePath);
-          importedModules.set(key, importedModule);
-        }
-
-        const loadedModule = await importedModule;
+        const loadedModule = await loadImportedModule(source, fileInfo.filePath);
 
         if (loadedModule !== undefined) {
           const { id, importedFileInfo } = loadedModule;
