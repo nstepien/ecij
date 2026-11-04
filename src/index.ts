@@ -14,7 +14,7 @@ import type {
 import { RolldownMagicString, type Plugin, type TransformPluginContext } from 'rolldown';
 import { makeIdFiltersToMatchWithQuery } from 'rolldown/filter';
 import { parseSync, Visitor } from 'rolldown/utils';
-import type { Plugin as VitePlugin } from 'vite';
+import type { Vite } from 'vitest/node';
 
 /**
  * Options for the {@link ecij} plugin.
@@ -786,8 +786,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     };
   }
 
-  // Rolldown's plugin type does not include Vite's hooks, which Rolldown ignores
-  const plugin: Plugin & Pick<VitePlugin, 'hotUpdate'> = {
+  // Rolldown's plugin type does not include the hooks of Vite and Vitest, which Rolldown ignores
+  const plugin: Plugin & Pick<Vite.Plugin, 'hotUpdate' | 'configureVitest'> = {
     name: 'ecij',
 
     buildEnd() {
@@ -833,6 +833,16 @@ export function ecij(configuration?: Configuration | null): Plugin {
       }
 
       return [...updatedModules];
+    },
+
+    configureVitest({ defineCacheKeyGenerator }) {
+      // Vitest's `fsModuleCache` reuses transformed modules across runs without calling
+      // `transform`, which registers their stylesheets, and only keys them on their own content,
+      // while their CSS can depend on the values they import. Keep the modules that `transform`
+      // handles out of it, like its `code` filter.
+      defineCacheKeyGenerator(({ sourceCode }) =>
+        sourceCode.includes('ecij') ? false : undefined,
+      );
     },
 
     resolveId: {

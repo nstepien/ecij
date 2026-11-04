@@ -6,6 +6,7 @@ import { ecij, type Configuration } from 'ecij/plugin';
 import { rolldown, type OutputAsset, type RolldownLog } from 'rolldown';
 import { build, createServer, type BuildEnvironmentOptions, type DevEnvironment } from 'vite';
 import { expect, test } from 'vitest';
+import { createVitest } from 'vitest/node';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
 
@@ -83,6 +84,35 @@ async function createDevServer(root: string) {
   });
 
   return Object.assign(server, { [Symbol.asyncDispose]: () => server.close() });
+}
+
+// Helper to create a Vitest instance with a new ecij plugin, like a new process would, which runs
+// the `*.spec.ts` files of `root`, keeps its caches there, and closes when disposed
+async function createTestRunner(root: string) {
+  const vitest = await createVitest(
+    {
+      root,
+      config: false,
+      include: ['*.spec.ts'],
+      watch: false,
+      reporters: [],
+      coverage: { enabled: false },
+      fsModuleCachePath: '.fs-module-cache',
+    },
+    { cacheDir: join(root, '.vite'), logLevel: 'silent', plugins: [ecij()] },
+  );
+
+  return { vitest, [Symbol.asyncDispose]: () => vitest.close() };
+}
+
+// The state and errors of each test module, run by a new test runner
+async function runTests(root: string) {
+  await using runner = await createTestRunner(root);
+  const { testModules } = await runner.vitest.start();
+  return testModules.map((testModule) => ({
+    state: testModule.state(),
+    errors: testModule.errors().map((error) => error.message),
+  }));
 }
 
 // The code of a module served by a dev server environment
@@ -351,6 +381,25 @@ test('update the CSS of an edited module that no CSS depends on in the Vite dev 
 
   const stylesheet = (await getStylesheets(client, '/card.ts')).at(-1);
   await expect(getCode(client, stylesheet!)).resolves.toContain('font-weight: bold');
+});
+
+test("rerun tests with Vitest's file system module cache", async () => {
+  await using fixtures = await mkdtempDisposable('./test/fixtures/edits-');
+  await cp('./test/fixtures/edits', fixtures.path, { recursive: true });
+  await writeFile(
+    join(fixtures.path, 'card.spec.ts'),
+    "import { expect, test } from 'vitest';\n\nimport { cardClass } from './card';\n\ntest('card', () => {\n  expect(cardClass).toMatch(/^css-/);\n});\n",
+  );
+
+  await expect(runTests(fixtures.path), 'first run').resolves.toStrictEqual([
+    { state: 'passed', errors: [] },
+  ]);
+
+  // The second run would reuse the transforms of the first one from `fsModuleCache` without
+  // calling `transform`, so the stylesheets that `transform` registers would be missing
+  await expect(runTests(fixtures.path), 'second run').resolves.toStrictEqual([
+    { state: 'passed', errors: [] },
+  ]);
 });
 
 test('generate hash based on file path relative to root and file name to avoid name conflicts', async () => {
