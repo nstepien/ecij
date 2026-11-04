@@ -317,6 +317,54 @@ test('support plain Rolldown builds', async () => {
   `);
 });
 
+test('parse modules as the language Rolldown assigned them', async () => {
+  const logs: RolldownLog[] = [];
+  const stylesheets: string[] = [];
+
+  const bundle = await rolldown({
+    input: './test/fixtures/jsx.input.js',
+    // The fixture is a .js file with JSX, which only parses as the module type it is assigned
+    moduleTypes: { '.js': 'jsx' },
+    transform: { jsx: 'react' },
+    plugins: [
+      ecij(),
+      {
+        // Rolldown no longer bundles CSS, so stand in for a CSS plugin
+        name: 'stylesheets-as-side-effects',
+        transform: {
+          filter: { id: /\.css$/ },
+          handler(code) {
+            stylesheets.push(code);
+            return { code: '', moduleType: 'js', moduleSideEffects: 'no-treeshake' };
+          },
+        },
+      },
+    ],
+    onLog(_level, log) {
+      logs.push(log);
+    },
+  });
+  const { output } = await bundle.generate();
+
+  expect(logs).toMatchInlineSnapshot(`[]`);
+  expect(output[0].code).toMatchInlineSnapshot(`
+    "// test/fixtures/jsx.input.js
+    const buttonClass = (() => "css-0327dad9")();
+    function Button() {
+    	return /* @__PURE__ */ React.createElement("button", { className: buttonClass });
+    }
+    export { Button, buttonClass };
+    "
+  `);
+  expect(stylesheets).toMatchInlineSnapshot(`
+    [
+      ".css-0327dad9 {
+      color: red;
+    }",
+    ]
+  `);
+});
+
 test.for([
   {
     // button.ts interpolates a color from tokens.ts, which ecij does not transform
