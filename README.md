@@ -19,6 +19,8 @@ npm install -D ecij
 
 The plugin is built on Rolldown's APIs, so `rolldown` is a required peer dependency. In Vite and tsdown projects it is already part of the dependency tree — npm and pnpm resolve the peer to that same copy — but package managers that do not install peer dependencies automatically, such as Yarn, require it to be installed explicitly.
 
+In projects tested with Vitest, ecij requires Vitest 5 or later, which its optional `vitest` peer dependency declares.
+
 ## Usage
 
 Source input:
