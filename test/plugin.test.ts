@@ -10,6 +10,17 @@ import { createVitest } from 'vitest/node';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
 
+// Normalize the absolute paths of a log, so that snapshots are stable across machines
+function normalizeLog(log: RolldownLog) {
+  if (log.id !== undefined) {
+    log.id = normalize(log.id);
+  }
+  if (log.loc?.file !== undefined) {
+    log.loc.file = normalize(log.loc.file);
+  }
+  return log;
+}
+
 // Helper to run a Vite build with the ecij plugin
 async function buildWithPlugin(
   entry: string,
@@ -31,14 +42,7 @@ async function buildWithPlugin(
         ...opts?.rolldownOptions,
         onLog(level, log, handler) {
           if (log.plugin === 'ecij') {
-            // Normalize absolute paths so snapshots are stable across machines
-            if (log.id !== undefined) {
-              log.id = normalize(log.id);
-            }
-            if (log.loc?.file !== undefined) {
-              log.loc.file = normalize(log.loc.file);
-            }
-            logs.push(log);
+            logs.push(normalizeLog(log));
           } else {
             handler(level, log);
           }
@@ -2077,7 +2081,7 @@ test('scope the declarations of TypeScript namespaces to their body', async () =
       },
     ],
     onLog(_level, log) {
-      logs.push(log);
+      logs.push(normalizeLog(log));
     },
   });
   const { output } = await bundle.generate();
@@ -2124,9 +2128,28 @@ test('scope the declarations of TypeScript namespaces to their body', async () =
     }",
     ]
   `);
-  expect(logs.map((log) => log.message)).toMatchInlineSnapshot(`
+  expect(logs).toMatchInlineSnapshot(`
     [
-      "skipped CSS extraction — could not resolve "muted" to a static string or number",
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "26:   // resolve them either → NOT extracted
+    27:   export const mutedClass = css\`
+    28:     color: \${muted};
+                     ^
+    29:   \`;
+    30: }",
+        "hook": "transform",
+        "id": "test/fixtures/namespace-scoping.input.ts",
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/namespace-scoping.input.ts",
+          "line": 28,
+        },
+        "message": "skipped CSS extraction — could not resolve "muted" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 714,
+      },
     ]
   `);
 });
