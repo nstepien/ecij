@@ -431,6 +431,15 @@ test('update the CSS of an edited module that no CSS depends on in the Vite dev 
   await expect(getCode(client, stylesheet!)).resolves.toContain('font-weight: bold');
 });
 
+test('skip interpolated imports that modules export to each other in the Vite dev server', async () => {
+  // Bundles cannot link such modules, unlike the dev server, which transforms modules one by one
+  await using server = await createDevServer('./test/fixtures/reexport-cycle');
+  const { client } = server.environments;
+
+  // Following the import of `loop` from a.ts to b.ts and back would never end
+  await expect(getCode(client, '/style.ts')).resolves.toContain('color: ${loop};');
+});
+
 test("rerun tests with Vitest's file system module cache", async () => {
   await using fixtures = await mkdtempDisposable('./test/fixtures/edits-');
   await cp('./test/fixtures/edits', fixtures.path, { recursive: true });
@@ -767,6 +776,7 @@ test('resolve imports named by strings, and skip unsupported import and export f
     var { destructured } = { destructured: "navy" };
     // test/fixtures/import-forms.input.ts
     var stringNameClass = (() => "css-3dcf2108")();
+    var reexportedImportsClass = (() => "css-1049bacb")();
     var defaultImportClass = css\`
       color: \${color};
     \`;
@@ -776,11 +786,22 @@ test('resolve imports named by strings, and skip unsupported import and export f
     var reexportClass = css\`
       font-weight: \${fontWeight};
     \`;
-    export { defaultImportClass, destructuredExportClass, reexportClass, stringNameClass };"
+    export { defaultImportClass, destructuredExportClass, reexportClass, reexportedImportsClass, stringNameClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
-    ".css-3dcf2108 {
+    ".css-348273b1 {
+      /* red class */
+      color: red;
+    }.css-3dcf2108 {
       color: teal;
+    }
+
+    .css-1049bacb {
+      font-size: 16px;
+
+      &.css-348273b1 {
+        color: navy;
+      }
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`
