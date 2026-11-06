@@ -106,6 +106,9 @@ const D_TS_FILE_REGEX = /\.d\.ts$/;
 // Match the generated stylesheet IDs, like /src/Button.tsx.1a2b3c4d.css
 const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 
+// The local name of the value of `export default`, as the spec names it, which no identifier can be
+const DEFAULT_EXPORT_LOCAL_NAME = '*default*';
+
 const PARSE_LANGS: ReadonlySet<string> = new Set<ParseLang>(['js', 'jsx', 'ts', 'tsx']);
 
 // Get the project root directory
@@ -497,12 +500,17 @@ export function ecij(configuration?: Configuration | null): Plugin {
         const source = statement.source.value;
 
         for (const specifier of statement.specifiers) {
-          // TODO: support default and namespace imports, unknown until then
+          // TODO: support namespace imports, unknown until then
           rootScope.identifiers.set(
             specifier.local.name,
-            specifier.type === 'ImportSpecifier'
-              ? { type: 'ImportBinding', source, imported: nameOf(specifier.imported) }
-              : undefined,
+            specifier.type === 'ImportNamespaceSpecifier'
+              ? undefined
+              : {
+                  type: 'ImportBinding',
+                  source,
+                  imported:
+                    specifier.type === 'ImportSpecifier' ? nameOf(specifier.imported) : 'default',
+                },
           );
         }
       } else if (statement.type === 'ExportNamedDeclaration') {
@@ -521,8 +529,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
             }
           }
         }
+      } else if (statement.type === 'ExportDefaultDeclaration') {
+        // Bind the exported value, unless it is a TypeScript interface, which has none
+        if (statement.declaration.type !== 'TSInterfaceDeclaration') {
+          rootScope.identifiers.set(DEFAULT_EXPORT_LOCAL_NAME, statement.declaration);
+          exportedLocalNames.set('default', DEFAULT_EXPORT_LOCAL_NAME);
+        }
       }
-      // TODO: support default exports
     }
 
     const cssTagCandidates = visitProgram(program, rootScope);

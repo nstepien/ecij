@@ -760,7 +760,7 @@ test('resolve const bindings of other const bindings', async () => {
   `);
 });
 
-test('resolve imports named by strings, and skip unsupported import and export forms', async () => {
+test('resolve the supported import and export forms, and skip the others', async () => {
   const fixturePath = './test/fixtures/import-forms.input.ts';
   const result = await buildWithPlugin(fixturePath);
 
@@ -776,8 +776,10 @@ test('resolve imports named by strings, and skip unsupported import and export f
     var { destructured } = { destructured: "navy" };
     // test/fixtures/import-forms.input.ts
     var stringNameClass = (() => "css-3dcf2108")();
-    var reexportedImportsClass = (() => "css-1049bacb")();
-    var defaultImportClass = css\`
+    var defaultImportsClass = (() => "css-fa575357")();
+    var typedModuleClass = (() => "css-d28f7ebe")();
+    var reexportedImportsClass = (() => "css-4abd566b")();
+    var namespaceImportClass = css\`
       color: \${color};
     \`;
     var destructuredExportClass = css\`
@@ -786,17 +788,32 @@ test('resolve imports named by strings, and skip unsupported import and export f
     var reexportClass = css\`
       font-weight: \${fontWeight};
     \`;
-    export { defaultImportClass, destructuredExportClass, reexportClass, reexportedImportsClass, stringNameClass };"
+    export { defaultImportsClass, destructuredExportClass, namespaceImportClass, reexportClass, reexportedImportsClass, stringNameClass, typedModuleClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
-    ".css-348273b1 {
+    ".css-161357d4 {
+      color: purple;
+    }.css-348273b1 {
       /* red class */
       color: red;
     }.css-3dcf2108 {
       color: teal;
     }
 
-    .css-1049bacb {
+    .css-fa575357 {
+      color: teal;
+      border-color: teal;
+
+      &.css-161357d4 {
+        color: inherit;
+      }
+    }
+
+    .css-d28f7ebe {
+      color: olive;
+    }
+
+    .css-4abd566b {
       font-size: 16px;
 
       &.css-348273b1 {
@@ -808,62 +825,62 @@ test('resolve imports named by strings, and skip unsupported import and export f
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "5: \`;
-    6: export const defaultImportClass = css\`
-    7:   color: \${defaultColor};
-                  ^
-    8: \`;
-    9: export const destructuredExportClass = css\`",
+        "frame": "26: \`;
+    27: export const namespaceImportClass = css\`
+    28:   color: \${helper.default};
+                   ^
+    29: \`;
+    30: export const destructuredExportClass = css\`",
         "hook": "transform",
         "id": "test/fixtures/import-forms.input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/import-forms.input.ts",
-          "line": 7,
+          "line": 28,
         },
-        "message": "skipped CSS extraction — could not resolve "defaultColor" to a static string or number",
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
         "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 250,
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 809,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": " 8: \`;
-     9: export const destructuredExportClass = css\`
-    10:   color: \${destructured};
+        "frame": "29: \`;
+    30: export const destructuredExportClass = css\`
+    31:   color: \${destructured};
                    ^
-    11: \`;
-    12: export const reexportClass = css\`",
+    32: \`;
+    33: export const reexportClass = css\`",
         "hook": "transform",
         "id": "test/fixtures/import-forms.input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/import-forms.input.ts",
-          "line": 10,
+          "line": 31,
         },
         "message": "skipped CSS extraction — could not resolve "destructured" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 323,
+        "pos": 884,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "11: \`;
-    12: export const reexportClass = css\`
-    13:   font-weight: \${reexported};
+        "frame": "32: \`;
+    33: export const reexportClass = css\`
+    34:   font-weight: \${reexported};
                          ^
-    14: \`;",
+    35: \`;",
         "hook": "transform",
         "id": "test/fixtures/import-forms.input.ts",
         "loc": {
           "column": 17,
           "file": "test/fixtures/import-forms.input.ts",
-          "line": 13,
+          "line": 34,
         },
         "message": "skipped CSS extraction — could not resolve "reexported" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 392,
+        "pos": 953,
       },
     ]
   `);
