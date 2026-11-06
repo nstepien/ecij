@@ -2055,6 +2055,82 @@ test('hoisted local bindings declared after the template shadow the (aliased) cs
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
+test('scope the declarations of TypeScript namespaces to their body', async () => {
+  const logs: RolldownLog[] = [];
+  const stylesheets: string[] = [];
+
+  // Unlike Vite, Rolldown transforms TypeScript after ecij, which then sees the namespaces
+  const bundle = await rolldown({
+    input: './test/fixtures/namespace-scoping.input.ts',
+    plugins: [
+      ecij(),
+      {
+        // Rolldown no longer bundles CSS, so stand in for a CSS plugin
+        name: 'stylesheets-as-side-effects',
+        transform: {
+          filter: { id: /\.css$/ },
+          handler(code) {
+            stylesheets.push(code);
+            return { code: '', moduleType: 'js', moduleSideEffects: 'no-treeshake' };
+          },
+        },
+      },
+    ],
+    onLog(_level, log) {
+      logs.push(log);
+    },
+  });
+  const { output } = await bundle.generate();
+
+  expect(output[0].code).toMatchInlineSnapshot(`
+    "// index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    // test/fixtures/namespace-scoping.input.ts
+    let Theme;
+    (function(_Theme) {
+    	_Theme.muted = "gray";
+    	_Theme.accentClass = (() => "css-29099e80")();
+    })(Theme || (Theme = {}));
+    const moduleAccentClass = (() => "css-fa93f45f")();
+    (function(_Theme2) {
+    	_Theme2.mutedClass = css\`
+        color: \${muted};
+      \`;
+    })(Theme || (Theme = {}));
+    let Fake;
+    (function(_Fake) {
+    	_Fake.fakeClass = (0, String.raw)\`
+        color: green;
+      \`;
+    })(Fake || (Fake = {}));
+    const moduleClass = (() => "css-78ce3552")();
+    export { Fake, Theme, moduleAccentClass, moduleClass };
+    "
+  `);
+  expect(stylesheets).toMatchInlineSnapshot(`
+    [
+      ".css-29099e80 {
+      color: red;
+    }
+
+    .css-fa93f45f {
+      color: blue;
+    }
+
+    .css-78ce3552 {
+      color: blue;
+    }",
+    ]
+  `);
+  expect(logs.map((log) => log.message)).toMatchInlineSnapshot(`
+    [
+      "skipped CSS extraction — could not resolve "muted" to a static string or number",
+    ]
+  `);
+});
+
 // Inlining the class names would leave the module they were declared in without any used export,
 // dropping it along with its stylesheet, so the plugin emits class names that cannot be inlined
 test.for([true, { mode: 'all' }] as const)(

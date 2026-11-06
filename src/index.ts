@@ -318,6 +318,13 @@ const SCOPE_VISITOR = new Visitor({
   },
   'StaticBlock:exit': popScope,
 
+  // TypeScript namespaces have their own scope, like `declare module` and `declare global`
+  // blocks. A namespace compiles to a function, so it is function-scoped for `var` declarations.
+  TSModuleBlock() {
+    pushScope(true);
+  },
+  'TSModuleBlock:exit': popScope,
+
   VariableDeclaration(node) {
     variableDeclarationKinds.push(node.kind);
   },
