@@ -2213,6 +2213,54 @@ test('hoisted local bindings declared after the template shadow the (aliased) cs
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
+test('keep the declarations of TypeScript namespaces out of the module scope', async () => {
+  const logs: RolldownLog[] = [];
+  const stylesheets: string[] = [];
+
+  // Unlike Vite, Rolldown transforms TypeScript after ecij, which then sees the namespaces
+  const bundle = await rolldown({
+    input: './test/fixtures/namespace-scoping.input.ts',
+    plugins: [
+      ecij(),
+      {
+        // Rolldown no longer bundles CSS, so stand in for a CSS plugin
+        name: 'stylesheets-as-side-effects',
+        transform: {
+          filter: { id: /\.css$/ },
+          handler(code) {
+            stylesheets.push(code);
+            return { code: '', moduleType: 'js', moduleSideEffects: 'no-treeshake' };
+          },
+        },
+      },
+    ],
+    onLog(_level, log) {
+      logs.push(log);
+    },
+  });
+  const { output } = await bundle.generate();
+
+  expect(output[0].code).toMatchInlineSnapshot(`
+    "// test/fixtures/namespace-scoping.input.ts
+    let Theme;
+    (function(_Theme) {
+    	_Theme.accent = "red";
+    	_Theme.css = String.raw;
+    })(Theme || (Theme = {}));
+    const moduleClass = (() => "css-0d370730")();
+    export { Theme, moduleClass };
+    "
+  `);
+  expect(stylesheets).toMatchInlineSnapshot(`
+    [
+      ".css-0d370730 {
+      color: blue;
+    }",
+    ]
+  `);
+  expect(logs).toMatchInlineSnapshot(`[]`);
+});
+
 // Inlining the class names would leave the module they were declared in without any used export,
 // dropping it along with its stylesheet, so the plugin emits class names that cannot be inlined
 test.for([true, { mode: 'all' }] as const)(
