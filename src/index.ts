@@ -418,7 +418,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
    *
    * Key: module ID, Value: parse of the module
    */
-  const parsedFileInfoCache = new Map<string, Promise<ParsedFileInfo>>();
+  const parsedFileInfoCache = new Map<string, ParsedFileInfo | Promise<ParsedFileInfo>>();
 
   /**
    * Generated CSS module IDs for each source file, imported ahead of the stylesheet of any
@@ -564,7 +564,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
   function loadParsedFile(
     context: TransformPluginContext,
     filePath: string,
-  ): Promise<ParsedFileInfo> {
+  ): ParsedFileInfo | Promise<ParsedFileInfo> {
     let parsedInfo = parsedFileInfoCache.get(filePath);
 
     if (parsedInfo === undefined) {
@@ -600,7 +600,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Parse the code being transformed, as other plugins may have changed it since it was read
     // from disk, and share the parse with the transforms that interpolate its values
     const parsedInfo = parseFile(filePath, code, parseLangOf(meta.moduleType));
-    parsedFileInfoCache.set(filePath, Promise.resolve(parsedInfo));
+    parsedFileInfoCache.set(filePath, parsedInfo);
     const { declarations } = parsedInfo;
 
     // Created with the first extraction, so files without any are returned untouched
