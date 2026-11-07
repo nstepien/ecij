@@ -435,6 +435,15 @@ test('update the CSS of an edited module that no CSS depends on in the Vite dev 
   await expect(getCode(client, stylesheet!)).resolves.toContain('font-weight: bold');
 });
 
+test('skip interpolated imports that modules export to each other in the Vite dev server', async () => {
+  // Bundles cannot link such modules, unlike the dev server, which transforms modules one by one
+  await using server = await createDevServer('./test/fixtures/reexport-cycle');
+  const { client } = server.environments;
+
+  // Following the import of `loop` from a.ts to b.ts and back would never end
+  await expect(getCode(client, '/style.ts')).resolves.toContain('color: ${loop};');
+});
+
 test("rerun tests with Vitest's file system module cache", async () => {
   await using fixtures = await mkdtempDisposable('./test/fixtures/edits-');
   await cp('./test/fixtures/edits', fixtures.path, { recursive: true });
@@ -590,10 +599,13 @@ test('inline string and number literal interpolations', async () => {
     var negativeNumberClass = (() => "css-f5d083cc")();
     var unaryPlusClass = (() => "css-3924bbbe")();
     var signedConstClass = (() => "css-2cff9334")();
+    var negatedConstClass = css\`
+      margin: \${-4}px;
+    \`;
     var booleanLiteralClass = css\`
       color: \${true};
     \`;
-    export { booleanLiteralClass, mixedClass, negativeNumberClass, numberLiteralClass, signedConstClass, stringLiteralClass, unaryPlusClass };"
+    export { booleanLiteralClass, mixedClass, negatedConstClass, negativeNumberClass, numberLiteralClass, signedConstClass, stringLiteralClass, unaryPlusClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-1c8f4a51 {
@@ -628,22 +640,42 @@ test('inline string and number literal interpolations', async () => {
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "25: \`;
-    26: export const booleanLiteralClass = css\`
-    27:   color: \${true};
+        "frame": "26: const gap = 4;
+    27: export const negatedConstClass = css\`
+    28:   margin: \${-gap}px;
+                    ^
+    29: \`;
+    30: export const booleanLiteralClass = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/literal-interpolation.input.ts",
+        "loc": {
+          "column": 12,
+          "file": "test/fixtures/literal-interpolation.input.ts",
+          "line": 28,
+        },
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "plugin": "ecij",
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 609,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "29: \`;
+    30: export const booleanLiteralClass = css\`
+    31:   color: \${true};
                    ^
-    28: \`;",
+    32: \`;",
         "hook": "transform",
         "id": "test/fixtures/literal-interpolation.input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/literal-interpolation.input.ts",
-          "line": 27,
+          "line": 31,
         },
         "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
         "plugin": "ecij",
         "pluginCode": "COMPLEX_INTERPOLATION",
-        "pos": 595,
+        "pos": 672,
       },
     ]
   `);
@@ -750,6 +782,132 @@ test('resolve const bindings of other const bindings', async () => {
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 972,
+      },
+    ]
+  `);
+});
+
+test('resolve the supported import and export forms, and skip the others', async () => {
+  const fixturePath = './test/fixtures/import-forms.input.ts';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "// index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    // test/fixtures/imported-literals.ts
+    var fontWeight = "bold";
+    // test/fixtures/import-forms-helper.ts
+    var color = "teal";
+    var { destructured } = { destructured: "navy" };
+    // test/fixtures/import-forms.input.ts
+    var stringNameClass = (() => "css-3dcf2108")();
+    var defaultImportsClass = (() => "css-fa575357")();
+    var typedModuleClass = (() => "css-d28f7ebe")();
+    var reexportedImportsClass = (() => "css-4abd566b")();
+    var namespaceImportClass = css\`
+      color: \${color};
+    \`;
+    var destructuredExportClass = css\`
+      color: \${destructured};
+    \`;
+    var reexportClass = css\`
+      font-weight: \${fontWeight};
+    \`;
+    export { defaultImportsClass, destructuredExportClass, namespaceImportClass, reexportClass, reexportedImportsClass, stringNameClass, typedModuleClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-161357d4 {
+      color: purple;
+    }.css-348273b1 {
+      /* red class */
+      color: red;
+    }.css-3dcf2108 {
+      color: teal;
+    }
+
+    .css-fa575357 {
+      color: teal;
+      border-color: teal;
+
+      &.css-161357d4 {
+        color: inherit;
+      }
+    }
+
+    .css-d28f7ebe {
+      color: olive;
+    }
+
+    .css-4abd566b {
+      font-size: 16px;
+
+      &.css-348273b1 {
+        color: navy;
+      }
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "26: \`;
+    27: export const namespaceImportClass = css\`
+    28:   color: \${helper.default};
+                   ^
+    29: \`;
+    30: export const destructuredExportClass = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/import-forms.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/import-forms.input.ts",
+          "line": 28,
+        },
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "plugin": "ecij",
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 809,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "29: \`;
+    30: export const destructuredExportClass = css\`
+    31:   color: \${destructured};
+                   ^
+    32: \`;
+    33: export const reexportClass = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/import-forms.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/import-forms.input.ts",
+          "line": 31,
+        },
+        "message": "skipped CSS extraction — could not resolve "destructured" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 884,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "32: \`;
+    33: export const reexportClass = css\`
+    34:   font-weight: \${reexported};
+                         ^
+    35: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/import-forms.input.ts",
+        "loc": {
+          "column": 17,
+          "file": "test/fixtures/import-forms.input.ts",
+          "line": 34,
+        },
+        "message": "skipped CSS extraction — could not resolve "reexported" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 953,
       },
     ]
   `);
