@@ -149,7 +149,7 @@ const accent = brand;
 export const buttonClassname = css`
   margin: ${-1}px ${8}px; /* string and number literals, including signed numbers */
   color: ${accent}; /* const bindings of such literals or of other bindings that resolve */
-  padding: ${spacing}px; /* named imports of such const bindings from other modules */
+  padding: ${spacing}px; /* named and default imports of such values from other modules */
 
   /* generated class names, including imported ones */
   &:hover .${iconClassname} {
@@ -191,4 +191,4 @@ npm test -- -u
 
 ## TODO
 
-- Full import/export handling (default/namespace import/export)
+- Full import/export handling (namespace imports and re-exports)
