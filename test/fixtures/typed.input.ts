@@ -1,0 +1,41 @@
+// @ts-nocheck — enums are not erasable syntax (tsconfig), and the plugin must
+// see them raw
+import { css } from 'ecij';
+
+// A `.js` module that Rolldown is told to treat as JSX (`moduleTypes`)
+import { jsxClass } from './jsx-tokens.js';
+// Inline type modifier mixed with a value import
+import { type LocalSpec, typedTone } from './typed-barrel';
+// Statement-level type-only import — erased
+import type { ToneType } from './typed-tokens';
+// Namespace type-only import — erased
+import type * as TypedNs from './typed-tokens';
+
+const toneAnnotation: ToneType = 'plum';
+const spec: LocalSpec = '12px';
+const nsAnnotated: TypedNs.ToneType = 'navy';
+
+export const usesTypedTone = css`
+  /* uses typed-tone */
+  color: ${typedTone};
+  outline-color: ${toneAnnotation};
+  width: ${spec};
+  border-color: ${nsAnnotated};
+`;
+
+// TypeScript enums only reach the plugin as such here (Vite lowers them
+// first). An enum shadows the outer binding of the same name.
+export function enumShadow() {
+  enum toneAnnotation {
+    A = 'x',
+  }
+  return css`
+    color: ${toneAnnotation as unknown as string};
+  `;
+}
+
+export const usesJsxClass = css`
+  &.${jsxClass} {
+    color: red;
+  }
+`;

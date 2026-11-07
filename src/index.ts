@@ -56,12 +56,18 @@ interface ImportBinding {
   imported: string;
 }
 
+/** The namespace of another module, imported with `import * as ns`. */
+interface NamespaceImport {
+  type: 'NamespaceImport';
+  source: string;
+}
+
 interface Scope {
   /**
    * The initializer of each `const` or the import of each imported binding, resolved on demand, or
    * `undefined` for the bindings whose value is unknown at build time (like function params).
    */
-  identifiers: Map<string, Expression | ImportBinding | undefined>;
+  identifiers: Map<string, Expression | ImportBinding | NamespaceImport | undefined>;
   parent: Scope | null;
   /** `true` for function/module/static-block scopes (where `var` bindings land). */
   isFunctionScope: boolean;
@@ -84,13 +90,25 @@ interface CssTagCandidate {
   scope: Scope;
 }
 
+type ModuleExport =
+  // `export { x }`, `export const x = …`, and `export default`: a binding of the module-level scope
+  | { kind: 'local'; localName: string }
+  // `export { x } from 'mod'`, and the export of a binding imported from 'mod'
+  | { kind: 'reexport'; source: string; imported: string }
+  // `export * as ns from 'mod'`, and the export of `import * as ns from 'mod'`
+  | { kind: 'namespace'; source: string };
+
 interface ParsedFileInfo {
   /** Module ID the file was parsed for, which its imports are resolved from. */
   readonly filePath: string;
   /** The css`` templates to extract in source order, keyed by template. */
   readonly declarations: ReadonlyMap<TaggedTemplateExpression, Declaration>;
-  /** Local names of the exported bindings, keyed by exported name. */
-  readonly exportedLocalNames: ReadonlyMap<string, string>;
+  /** Where the stylesheet imports go: after the hashbang and the directive prologue. */
+  readonly importInsertionPosition: number;
+  /** The exports of the module, keyed by exported name, except those of `export *`. */
+  readonly moduleExports: ReadonlyMap<string, ModuleExport>;
+  /** Sources of `export * from 'mod'`, which provide the other names, except `default`. */
+  readonly exportStarSources: readonly string[];
   /** Module-level scope, where the imports and the exported bindings are declared. */
   readonly rootScope: Scope;
 }
@@ -111,6 +129,11 @@ const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 // The local name of the value of `export default`, as the spec names it, which no identifier can be
 const DEFAULT_EXPORT_LOCAL_NAME = '*default*';
 
+// Queries Vite appends to the IDs of the modules it serves without changing their code, like
+// cache busting. Any other query denotes a module with code of its own, like `?raw` (the text of
+// the file), `?url` (its URL), or `?html-proxy` (an inline script of an HTML page).
+const TRANSPARENT_QUERY_KEYS = new Set(['v', 't', 'import', 'direct', 'used']);
+
 const PARSE_LANGS: ReadonlySet<string> = new Set<ParseLang>(['js', 'jsx', 'ts', 'tsx']);
 
 // Get the project root directory
@@ -129,6 +152,101 @@ function parseLangOf(moduleType: string): ParseLang | undefined {
 // The name of an imported or exported binding, which can be a string: `export { a as "b" }`
 function nameOf(name: ModuleExportName): string {
   return name.type === 'Literal' ? name.value : name.name;
+}
+
+// Removes the query of a module ID, like `/src/a.ts?raw` -> `/src/a.ts`
+function stripQuery(id: string): string {
+  const queryIndex = id.indexOf('?');
+  return queryIndex === -1 ? id : id.slice(0, queryIndex);
+}
+
+// The identity of a module, under which its parse and stylesheet are kept: its ID, without the
+// queries that do not change its code
+function moduleKey(id: string): string {
+  const queryIndex = id.indexOf('?');
+
+  if (queryIndex !== -1) {
+    for (const key of new URLSearchParams(id.slice(queryIndex + 1)).keys()) {
+      if (!TRANSPARENT_QUERY_KEYS.has(key)) return id;
+    }
+  }
+
+  return stripQuery(id);
+}
+
+// Vite attaches its environment to plugin contexts, unlike Rolldown
+interface ViteEnvironment {
+  mode: string;
+  pluginContainer: {
+    load(id: string): Promise<string | { code?: string | null } | null | undefined>;
+  };
+}
+
+// The code of a module that no file holds, like a virtual module or a query variant (`?raw`)
+async function getModuleCode(
+  context: TransformPluginContext,
+  moduleId: string,
+): Promise<string | undefined> {
+  const { environment } = context as { environment?: ViteEnvironment };
+
+  // Vite's dev server throws on `ModuleInfo.code`, and does not keep the code of the modules loaded
+  // through `this.load()`, so their `load` hooks provide it
+  if (environment?.mode === 'dev') {
+    const loadResult = await environment.pluginContainer.load(moduleId);
+    return (typeof loadResult === 'string' ? loadResult : loadResult?.code) ?? undefined;
+  }
+
+  return context.getModuleInfo(moduleId)?.code ?? undefined;
+}
+
+// The code of an imported module: from its file, or from the module graph for the modules that
+// no file holds, like virtual modules, and query variants, whose code is not the file's
+async function readModuleCode(
+  context: TransformPluginContext,
+  moduleId: string,
+): Promise<string | undefined> {
+  const fileCode = moduleId.includes('?')
+    ? undefined
+    : await context.fs.readFile(moduleId, { encoding: 'utf8' }).catch(() => undefined);
+
+  return fileCode ?? getModuleCode(context, moduleId);
+}
+
+// Unwraps parentheses and TypeScript type assertions,
+// which do not change the runtime value of an expression.
+function unwrapExpression(expression: Expression): Expression {
+  while (
+    expression.type === 'ParenthesizedExpression' ||
+    expression.type === 'TSAsExpression' ||
+    expression.type === 'TSSatisfiesExpression' ||
+    expression.type === 'TSNonNullExpression' ||
+    expression.type === 'TSTypeAssertion'
+  ) {
+    expression = expression.expression;
+  }
+
+  return expression;
+}
+
+// Splits an identifier, or a chain of members of one, into its name and member names, like
+// `ns.inner.x` into `ns` and `['inner', 'x']`. Computed and optional members are not static.
+function flattenMemberExpression(
+  expression: Expression,
+): { name: string; members: string[] } | undefined {
+  const members: string[] = [];
+  let current = unwrapExpression(expression);
+
+  while (
+    current.type === 'MemberExpression' &&
+    !current.computed &&
+    !current.optional &&
+    current.property.type === 'Identifier'
+  ) {
+    members.unshift(current.property.name);
+    current = unwrapExpression(current.object);
+  }
+
+  return current.type === 'Identifier' ? { name: current.name, members } : undefined;
 }
 
 // The innermost scope of the chain that binds `name`, shadowing outer bindings and imports.
@@ -345,6 +463,14 @@ const SCOPE_VISITOR = new Visitor({
   },
   'StaticBlock:exit': popScope,
 
+  // TypeScript enums bind their name in the containing scope, like classes. Only plain Rolldown
+  // builds hand raw TypeScript over. Ambient declarations bind nothing.
+  TSEnumDeclaration(node) {
+    if (!node.declare) {
+      currentScope.identifiers.set(node.id.name, undefined);
+    }
+  },
+
   // TypeScript namespaces are not supported, but they get a scope of their own, so that their
   // declarations cannot override the module's bindings, ecij's `css` included. `TSModuleBlock` is
   // also the body of `declare module` and `declare global` blocks. A namespace compiles to a
@@ -373,16 +499,17 @@ const SCOPE_VISITOR = new Visitor({
     }
 
     const localName = node.id.name;
+    const init = node.init === null ? null : unwrapExpression(node.init);
     // Only a `const` has a static value: a `let`/`var` may be reassigned,
     // and a `var` is `undefined` until its declaration has run.
     const isConst = variableDeclarationKinds.at(-1) === 'const';
 
     // Record the initializer of a `const`, resolved on demand, or an unknown
     // value: either way, the binding shadows outer variables
-    targetScope.identifiers.set(localName, isConst && node.init !== null ? node.init : undefined);
+    targetScope.identifiers.set(localName, isConst && init !== null ? init : undefined);
 
-    if (node.init?.type === 'TaggedTemplateExpression') {
-      addCssTagCandidate(node.init, localName);
+    if (init?.type === 'TaggedTemplateExpression') {
+      addCssTagCandidate(init, localName);
     }
   },
 
@@ -466,9 +593,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
   const extractedCssPerFile = new Map<string, string>();
 
   /**
-   * The modules whose CSS interpolates values exported by each module.
+   * The modules whose CSS interpolates values exported by each file.
    *
-   * Key: module ID, Value: IDs of the modules interpolating its values
+   * Key: file path, Value: IDs of the modules interpolating its values
    */
   const dependentsPerFile = new Map<string, Set<string>>();
 
@@ -501,51 +628,126 @@ export function ecij(configuration?: Configuration | null): Plugin {
     const { program } = parseSync(filePath, code, lang === undefined ? undefined : { lang });
     // Scope tracking: root scope for imports and module-level declarations
     const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
-    const exportedLocalNames = new Map<string, string>();
+    const moduleExports = new Map<string, ModuleExport>();
+    const exportStarSources: string[] = [];
+
+    // Imports may only follow the hashbang and the directive prologue (`'use client'`), so the
+    // stylesheet imports are injected where the first other statement starts
+    const importInsertionPosition =
+      program.body.find(
+        (statement) => !(statement.type === 'ExpressionStatement' && statement.directive != null),
+      )?.start ?? program.end;
 
     // Collect the imports and exports from the top-level statements. The parse result's module
     // record lists them too, but converting it to JS objects takes longer than this loop, and
-    // `SCOPE_VISITOR` would also visit the declarations nested in TypeScript namespaces.
+    // `SCOPE_VISITOR` would also visit the declarations nested in TypeScript namespaces. Type-only
+    // imports and exports are erased, so they bind and export nothing.
     for (const statement of program.body) {
       if (statement.type === 'ImportDeclaration') {
+        if (statement.importKind === 'type') continue;
+
         const source = statement.source.value;
 
         for (const specifier of statement.specifiers) {
-          // TODO: support namespace imports, unknown until then
-          rootScope.identifiers.set(
-            specifier.local.name,
-            specifier.type === 'ImportNamespaceSpecifier'
-              ? undefined
-              : {
-                  type: 'ImportBinding',
-                  source,
-                  imported:
-                    specifier.type === 'ImportSpecifier' ? nameOf(specifier.imported) : 'default',
-                },
-          );
+          if (specifier.type === 'ImportNamespaceSpecifier') {
+            rootScope.identifiers.set(specifier.local.name, { type: 'NamespaceImport', source });
+          } else if (specifier.type === 'ImportDefaultSpecifier') {
+            rootScope.identifiers.set(specifier.local.name, {
+              type: 'ImportBinding',
+              source,
+              imported: 'default',
+            });
+          } else if (specifier.importKind !== 'type') {
+            rootScope.identifiers.set(specifier.local.name, {
+              type: 'ImportBinding',
+              source,
+              imported: nameOf(specifier.imported),
+            });
+          }
         }
       } else if (statement.type === 'ExportNamedDeclaration') {
-        // TODO: handle re-exports
-        if (statement.source !== null) continue;
+        if (statement.exportKind === 'type') continue;
+
+        const source = statement.source?.value;
 
         for (const specifier of statement.specifiers) {
-          exportedLocalNames.set(nameOf(specifier.exported), nameOf(specifier.local));
+          if (specifier.exportKind === 'type') continue;
+
+          moduleExports.set(
+            nameOf(specifier.exported),
+            source === undefined
+              ? { kind: 'local', localName: nameOf(specifier.local) }
+              : { kind: 'reexport', source, imported: nameOf(specifier.local) },
+          );
         }
 
-        // Only variables can be bound to static values, not functions or classes
-        if (statement.declaration?.type === 'VariableDeclaration') {
-          for (const { id } of statement.declaration.declarations) {
+        const { declaration } = statement;
+
+        // Exported declarations take precedence over `export *` even when their value is unknown
+        if (declaration?.type === 'VariableDeclaration') {
+          for (const { id } of declaration.declarations) {
             if (id.type === 'Identifier') {
-              exportedLocalNames.set(id.name, id.name);
+              moduleExports.set(id.name, { kind: 'local', localName: id.name });
+            } else {
+              // A destructuring pattern exports every binding it declares
+              const patternScope: Scope = {
+                identifiers: new Map(),
+                parent: null,
+                isFunctionScope: true,
+              };
+              recordBindingPattern(id, patternScope);
+
+              for (const name of patternScope.identifiers.keys()) {
+                moduleExports.set(name, { kind: 'local', localName: name });
+              }
             }
           }
+        } else if (
+          (declaration?.type === 'FunctionDeclaration' ||
+            declaration?.type === 'ClassDeclaration' ||
+            declaration?.type === 'TSEnumDeclaration') &&
+          declaration.id !== null
+        ) {
+          moduleExports.set(declaration.id.name, { kind: 'local', localName: declaration.id.name });
+        }
+      } else if (statement.type === 'ExportAllDeclaration') {
+        if (statement.exportKind === 'type') continue;
+
+        if (statement.exported === null) {
+          exportStarSources.push(statement.source.value);
+        } else {
+          moduleExports.set(nameOf(statement.exported), {
+            kind: 'namespace',
+            source: statement.source.value,
+          });
         }
       } else if (statement.type === 'ExportDefaultDeclaration') {
         // Bind the exported value, unless it is a TypeScript interface, which has none
         if (statement.declaration.type !== 'TSInterfaceDeclaration') {
-          rootScope.identifiers.set(DEFAULT_EXPORT_LOCAL_NAME, statement.declaration);
-          exportedLocalNames.set('default', DEFAULT_EXPORT_LOCAL_NAME);
+          rootScope.identifiers.set(
+            DEFAULT_EXPORT_LOCAL_NAME,
+            unwrapExpression(statement.declaration),
+          );
+          moduleExports.set('default', { kind: 'local', localName: DEFAULT_EXPORT_LOCAL_NAME });
         }
+      }
+    }
+
+    // The export of an imported binding re-exports it, like in ECMAScript, so that `export *` sees
+    // that two modules export the same binding
+    for (const [exportedName, moduleExport] of moduleExports) {
+      if (moduleExport.kind !== 'local') continue;
+
+      const binding = rootScope.identifiers.get(moduleExport.localName);
+
+      if (binding?.type === 'ImportBinding') {
+        moduleExports.set(exportedName, {
+          kind: 'reexport',
+          source: binding.source,
+          imported: binding.imported,
+        });
+      } else if (binding?.type === 'NamespaceImport') {
+        moduleExports.set(exportedName, { kind: 'namespace', source: binding.source });
       }
     }
 
@@ -579,7 +781,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
     return {
       filePath,
       declarations,
-      exportedLocalNames,
+      importInsertionPosition,
+      moduleExports,
+      exportStarSources,
       rootScope,
     };
   }
@@ -603,11 +807,12 @@ export function ecij(configuration?: Configuration | null): Plugin {
     return parsedInfo;
   }
 
+  // Reads and parses an imported module. One whose code cannot be read exports nothing.
   async function readParsedFile(
     context: TransformPluginContext,
     filePath: string,
   ): Promise<ParsedFileInfo> {
-    return parseFile(filePath, await context.fs.readFile(filePath, { encoding: 'utf8' }));
+    return parseFile(filePath, (await readModuleCode(context, filePath)) ?? '');
   }
 
   /**
@@ -622,6 +827,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     meta: { magicString?: RolldownMagicString; moduleType: string },
   ): Promise<{
     magicString: RolldownMagicString | null;
+    importInsertionPosition: number;
     cssContent: string;
     stylesheetDependencies: Set<string>;
   }> {
@@ -629,7 +835,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // from disk, and share the parse with the transforms that interpolate its values
     const parsedInfo = parseFile(filePath, code, parseLangOf(meta.moduleType));
     parsedFileInfoCache.set(filePath, parsedInfo);
-    const { declarations } = parsedInfo;
+    const { declarations, importInsertionPosition } = parsedInfo;
 
     // Created with the first extraction, so files without any are returned untouched
     let magicString: RolldownMagicString | null = null;
@@ -644,8 +850,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // imports can change in between.
     const bindingValues = new Map<Expression | ImportBinding, string | undefined>();
 
-    // The modules that interpolated values are imported from, keyed by importer and import
-    // source, so that each one is resolved, loaded, and parsed once per transform
+    // The modules that interpolated values come from, re-exports included, keyed by importer and
+    // import source, so that each one is resolved, loaded, and parsed once per transform
     const importedModules = new Map<string, ReturnType<typeof resolveImportedModule>>();
 
     function loadImportedModule(source: string, importer: string) {
@@ -660,26 +866,33 @@ export function ecij(configuration?: Configuration | null): Plugin {
       return importedModule;
     }
 
-    async function resolveImportedModule(source: string, importer: string) {
+    async function resolveImportedModule(
+      source: string,
+      importer: string,
+    ): Promise<ParsedFileInfo | undefined> {
       // Resolve the import path relative to the importer
       const resolvedId = await context.resolve(source, importer);
-      if (resolvedId == null) return;
 
-      const { id } = resolvedId;
+      // External modules have no code to read values from. Vite's dev server leaves the flag unset.
+      if (resolvedId == null || resolvedId.external) return;
 
-      // Record the dependency so that editing the imported module updates the transformed one
-      let dependents = dependentsPerFile.get(id);
+      // A query variant, like `?raw`, is a module of its own
+      const id = moduleKey(resolvedId.id);
+
+      // Record the dependency so that editing the imported file updates the transformed module
+      const file = stripQuery(id);
+      let dependents = dependentsPerFile.get(file);
 
       if (dependents === undefined) {
         dependents = new Set();
-        dependentsPerFile.set(id, dependents);
+        dependentsPerFile.set(file, dependents);
       }
 
       dependents.add(filePath);
 
-      // Wait for the imported module's transform, which registers the stylesheet that
-      // `resolveValue` imports. Vite's dev server does not transform modules loaded this way,
-      // so there the stylesheet is only imported once that module has been transformed.
+      // Wait for the imported module's transform, which registers the stylesheet imported with
+      // its values. Vite's dev server does not transform modules loaded this way, so there the
+      // stylesheet is only imported once that module has been transformed.
       // Loading a module whose transform waits for this one would never finish, which
       // happens when modules interpolate each other's class names. Its stylesheet is then
       // not registered yet, but values come from the module's parse either way.
@@ -693,18 +906,137 @@ export function ecij(configuration?: Configuration | null): Plugin {
         }
       }
 
-      return { id, importedFileInfo: await loadParsedFile(context, id) };
+      return loadParsedFile(context, id);
+    }
+
+    // An export resolved to where it comes from: a binding of a module-level scope, or the
+    // namespace of a module. A name that several `export *` provide through different bindings is
+    // ambiguous, so it is not exported at all.
+    type ResolvedExport =
+      | { kind: 'binding'; fileInfo: ParsedFileInfo; localName: string }
+      | { kind: 'namespace'; fileInfo: ParsedFileInfo }
+      | { kind: 'ambiguous' };
+
+    // Resolves the export `name` of a module to where it comes from, following re-exports and
+    // `export *` like ECMAScript's ResolveExport, which `visited` keeps out of re-export cycles
+    async function resolveExport(
+      fileInfo: ParsedFileInfo,
+      name: string,
+      visited: Set<string>,
+    ): Promise<ResolvedExport | undefined> {
+      const key = `${fileInfo.filePath}\0${name}`;
+
+      if (visited.has(key)) {
+        return;
+      }
+
+      visited.add(key);
+
+      const moduleExport = fileInfo.moduleExports.get(name);
+
+      // Explicit exports take precedence over `export *`, even when their value is unknown
+      switch (moduleExport?.kind) {
+        case 'local':
+          return { kind: 'binding', fileInfo, localName: moduleExport.localName };
+
+        case 'reexport':
+        case 'namespace': {
+          const importedFileInfo = await loadImportedModule(moduleExport.source, fileInfo.filePath);
+
+          if (importedFileInfo === undefined) {
+            return;
+          }
+
+          return moduleExport.kind === 'namespace'
+            ? { kind: 'namespace', fileInfo: importedFileInfo }
+            : resolveExport(importedFileInfo, moduleExport.imported, visited);
+        }
+      }
+
+      // `export *` does not provide the default export
+      if (name === 'default') {
+        return;
+      }
+
+      // The bindings that the `export *` provide the name through, keyed by module and name
+      const candidates = new Map<string, ResolvedExport>();
+
+      for (const source of fileInfo.exportStarSources) {
+        const importedFileInfo = await loadImportedModule(source, fileInfo.filePath);
+
+        if (importedFileInfo === undefined) continue;
+
+        const candidate = await resolveExport(importedFileInfo, name, visited);
+
+        if (candidate === undefined) continue;
+
+        // A name that is ambiguous in a source is ambiguous here too
+        if (candidate.kind === 'ambiguous') {
+          return candidate;
+        }
+
+        candidates.set(
+          `${candidate.fileInfo.filePath}\0${candidate.kind === 'binding' ? candidate.localName : ''}`,
+          candidate,
+        );
+      }
+
+      return candidates.size > 1 ? { kind: 'ambiguous' } : candidates.values().next().value;
+    }
+
+    // The export that an import refers to: the namespace of the imported module for a namespace
+    // import, which a named import can be too, through `export * as ns from 'mod'`
+    async function resolveImportedExport(
+      binding: ImportBinding | NamespaceImport,
+      fileInfo: ParsedFileInfo,
+    ): Promise<ResolvedExport | undefined> {
+      const importedFileInfo = await loadImportedModule(binding.source, fileInfo.filePath);
+
+      if (importedFileInfo === undefined) {
+        return;
+      }
+
+      return binding.type === 'NamespaceImport'
+        ? { kind: 'namespace', fileInfo: importedFileInfo }
+        : resolveExport(importedFileInfo, binding.imported, new Set());
+    }
+
+    // Resolves the value of an export, whose module's stylesheet is imported first, as its class
+    // names may be part of the value
+    async function resolveExportValue(
+      resolvedExport: ResolvedExport | undefined,
+    ): Promise<string | undefined> {
+      if (resolvedExport?.kind !== 'binding') {
+        return;
+      }
+
+      const { fileInfo, localName } = resolvedExport;
+      const value = await resolveBinding(localName, fileInfo.rootScope, fileInfo);
+
+      if (value !== undefined && fileInfo.filePath !== filePath) {
+        const stylesheetImport = stylesheetImportPerFile.get(fileInfo.filePath);
+
+        if (stylesheetImport !== undefined) {
+          stylesheetDependencies.add(stylesheetImport);
+        }
+      }
+
+      return value;
     }
 
     // Statically evaluates an expression of a file, like an interpolation or the initializer of a
     // `const`, to its string value: a string or number literal, including signed numbers (`-5`,
-    // `+5`), or an identifier bound to such a value or to a class name, in the file or imported.
-    // The value is only returned as a promise when an import has to be loaded first.
+    // `+5`), or an identifier bound to such a value or to a class name, in the file or imported,
+    // including the members of imported module namespaces (`ns.x`). Parentheses and TypeScript
+    // type assertions are ignored. The value is only returned as a promise when an import has to
+    // be loaded first.
     function resolveValue(
       expression: Expression,
       scope: Scope,
       fileInfo: ParsedFileInfo,
     ): MaybePromise<string | undefined> {
+      expression = unwrapExpression(expression);
+
       if (expression.type === 'Literal') {
         if (typeof expression.value === 'string' || typeof expression.value === 'number') {
           return String(expression.value);
@@ -713,36 +1045,67 @@ export function ecij(configuration?: Configuration | null): Plugin {
       }
 
       if (expression.type === 'UnaryExpression') {
+        const argument = unwrapExpression(expression.argument);
+
         if (
           (expression.operator === '-' || expression.operator === '+') &&
-          expression.argument.type === 'Literal' &&
-          typeof expression.argument.value === 'number'
+          argument.type === 'Literal' &&
+          typeof argument.value === 'number'
         ) {
-          return String(
-            expression.operator === '-' ? -expression.argument.value : expression.argument.value,
-          );
+          return String(expression.operator === '-' ? -argument.value : argument.value);
         }
         return;
       }
 
-      if (expression.type !== 'Identifier') {
+      const path = flattenMemberExpression(expression);
+
+      if (path === undefined) {
         return;
       }
 
       // Walk up the scope chain to find the identifier, imports included
-      const bindingScope = findBindingScope(expression.name, scope);
+      const bindingScope = findBindingScope(path.name, scope);
 
       if (bindingScope === undefined) {
         return;
       }
 
-      return resolveBinding(expression.name, bindingScope, fileInfo);
+      if (path.members.length === 0) {
+        return resolveBinding(path.name, bindingScope, fileInfo);
+      }
+
+      return resolveMembers(bindingScope.identifiers.get(path.name), path.members, fileInfo);
+    }
+
+    // Resolves the members of an imported module namespace, like `ns.inner.x`, each an export of
+    // the namespace before it
+    async function resolveMembers(
+      binding: Expression | ImportBinding | NamespaceImport | undefined,
+      members: readonly string[],
+      fileInfo: ParsedFileInfo,
+    ): Promise<string | undefined> {
+      // Only the namespaces of imported modules have members to resolve
+      if (binding?.type !== 'ImportBinding' && binding?.type !== 'NamespaceImport') {
+        return;
+      }
+
+      let resolvedExport = await resolveImportedExport(binding, fileInfo);
+
+      for (const member of members) {
+        if (resolvedExport?.kind !== 'namespace') {
+          return;
+        }
+
+        resolvedExport = await resolveExport(resolvedExport.fileInfo, member, new Set());
+      }
+
+      return resolveExportValue(resolvedExport);
     }
 
     // Resolves the binding `name` declared in `scope`: a `const` takes the class name of its css``
     // template or the value of its initializer, and an import the value that its module exports.
     // Other bindings have unknown values (like function params), which stops the lookup and
-    // signals "can't resolve".
+    // signals "can't resolve", like a module namespace, which is not a string.
     function resolveBinding(
       name: string,
       scope: Scope,
@@ -750,7 +1113,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     ): MaybePromise<string | undefined> {
       const binding = scope.identifiers.get(name);
 
-      if (binding === undefined) {
+      if (binding === undefined || binding.type === 'NamespaceImport') {
         return;
       }
 
@@ -781,30 +1144,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
       return value;
     }
 
-    // Resolves an import of a file to the value of the binding its module exports by that name,
-    // which can itself be an import
+    // Resolves an import of a file to the value of the binding that its module exports by that
+    // name, following re-exports
     async function resolveImport(
-      { source, imported }: ImportBinding,
+      binding: ImportBinding,
       fileInfo: ParsedFileInfo,
     ): Promise<string | undefined> {
-      const loadedModule = await loadImportedModule(source, fileInfo.filePath);
-      if (loadedModule === undefined) return;
-
-      const { id, importedFileInfo } = loadedModule;
-      const localName = importedFileInfo.exportedLocalNames.get(imported);
-      if (localName === undefined) return;
-
-      const value = await resolveBinding(localName, importedFileInfo.rootScope, importedFileInfo);
-
-      if (value !== undefined) {
-        const stylesheetImport = stylesheetImportPerFile.get(id);
-
-        if (stylesheetImport !== undefined) {
-          stylesheetDependencies.add(stylesheetImport);
-        }
-      }
-
-      return value;
+      return resolveExportValue(await resolveImportedExport(binding, fileInfo));
     }
 
     // Build the CSS of each template, resolving its interpolations
@@ -823,22 +1169,24 @@ export function ecij(configuration?: Configuration | null): Plugin {
           const resolvedValue = await resolveValue(expression, scope, parsedInfo);
 
           if (resolvedValue === undefined) {
-            if (expression.type === 'Identifier') {
-              // Cannot resolve — skip this entire css`` block
-              context.warn(
-                {
-                  pluginCode: 'UNRESOLVED_INTERPOLATION',
-                  message: `skipped CSS extraction — could not resolve "${expression.name}" to a static string or number`,
-                },
-                expression.start,
-              );
-            } else {
+            const path = flattenMemberExpression(expression);
+
+            if (path === undefined) {
               // Complex expression — skip this entire css`` block
               context.warn(
                 {
                   pluginCode: 'COMPLEX_INTERPOLATION',
                   message:
                     'skipped CSS extraction — interpolation is not a static string, number, or identifier',
+                },
+                expression.start,
+              );
+            } else {
+              // Cannot resolve — skip this entire css`` block
+              context.warn(
+                {
+                  pluginCode: 'UNRESOLVED_INTERPOLATION',
+                  message: `skipped CSS extraction — could not resolve "${[path.name, ...path.members].join('.')}" to a static string or number`,
                 },
                 expression.start,
               );
@@ -885,6 +1233,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
     return {
       magicString,
+      importInsertionPosition,
       cssContent,
       stylesheetDependencies,
     };
@@ -903,11 +1252,17 @@ export function ecij(configuration?: Configuration | null): Plugin {
     },
 
     watchChange(id) {
-      // The dev server keeps the caches until it closes. Forget the parse of the edited module
-      // and the stylesheets that change with it: its own, and those of the modules that
-      // interpolate its values. Keep their CSS, as cached transforms may still import it.
-      parsedFileInfoCache.delete(id);
-      stylesheetImportPerFile.delete(id);
+      // The dev server keeps the caches until it closes. Forget the parse of the edited module and
+      // of its query variants, and the stylesheets that change with it: its own, and those of the
+      // modules that interpolate its values. Keep their CSS, as cached transforms may still import
+      // it.
+      for (const moduleId of parsedFileInfoCache.keys()) {
+        if (stripQuery(moduleId) === id) parsedFileInfoCache.delete(moduleId);
+      }
+
+      for (const moduleId of stylesheetImportPerFile.keys()) {
+        if (stripQuery(moduleId) === id) stylesheetImportPerFile.delete(moduleId);
+      }
 
       for (const dependentId of dependentsPerFile.get(id) ?? []) {
         stylesheetImportPerFile.delete(dependentId);
@@ -927,10 +1282,11 @@ export function ecij(configuration?: Configuration | null): Plugin {
       // as they import its stylesheet and their CSS may change, and the modules that interpolate
       // their class names, as they import their stylesheets.
       const updatedModules = new Set(modules);
+      const { moduleGraph } = this.environment;
 
       for (const dependentId of dependents) {
-        for (const id of [dependentId, ...(dependentsPerFile.get(dependentId) ?? [])]) {
-          for (const moduleNode of this.environment.moduleGraph.getModulesByFile(id) ?? []) {
+        for (const id of [dependentId, ...(dependentsPerFile.get(stripQuery(dependentId)) ?? [])]) {
+          for (const moduleNode of moduleGraph.getModulesByFile(stripQuery(id)) ?? []) {
             updatedModules.add(moduleNode);
           }
         }
@@ -976,17 +1332,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
         code: 'ecij',
       },
       async handler(code, id, meta) {
-        // Remove query parameters from the ID
-        const queryIndex = id.indexOf('?');
-        const cleanId = queryIndex === -1 ? id : id.slice(0, queryIndex);
+        // The module's identity: a query variant, like an inline script of an HTML page, is a
+        // module of its own, with its own parse, class names, and stylesheet
+        const moduleId = moduleKey(id);
 
         // Extract CSS from the code
-        const { magicString, cssContent, stylesheetDependencies } = await extractCssFromCode(
-          this,
-          code,
-          cleanId,
-          meta,
-        );
+        const { magicString, importInsertionPosition, cssContent, stylesheetDependencies } =
+          await extractCssFromCode(this, code, moduleId, meta);
 
         if (magicString === null) {
           return null;
@@ -999,18 +1351,18 @@ export function ecij(configuration?: Configuration | null): Plugin {
           // Use the original file path with a .css extension
           // For example, /src/components/Button.tsx -> /src/components/Button.tsx.hash.css
           const hash = hashText(cssContent);
-          const cssModuleId = `${cleanId}.${hash}.css`;
+          const cssModuleId = `${stripQuery(moduleId)}.${hash}.css`;
 
           // Store the CSS extractions for this file
           extractedCssPerFile.set(cssModuleId, cssContent);
-          stylesheetImportPerFile.set(id, cssModuleId);
+          stylesheetImportPerFile.set(moduleId, cssModuleId);
 
           let importStatements = '';
 
           // Import the stylesheets of the modules whose class names were interpolated into
-          // the CSS above, ahead of this module's own. These statements are prepended to the
-          // file, so leaving them out would emit this module's CSS before the CSS it
-          // references, inverting the cascade.
+          // the CSS above, ahead of this module's own. These statements are injected at the
+          // top of the file, so leaving them out would emit this module's CSS before the CSS
+          // it references, inverting the cascade.
           for (const id of stylesheetDependencies) {
             importStatements += `import ${JSON.stringify(id)};\n`;
           }
@@ -1019,8 +1371,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
           // including \ separators on Windows.
           importStatements += `import ${JSON.stringify(cssModuleId)};\n`;
 
-          // Add side-effect/CSS module imports at the top of the file.
-          magicString.prepend(importStatements);
+          // Add side-effect/CSS module imports at the top of the file, after any hashbang and
+          // directive prologue
+          magicString.appendLeft(importInsertionPosition, importStatements);
         }
 
         // Rolldown provides a magic string and generates the sourcemap natively. Vite does not

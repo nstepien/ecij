@@ -41,17 +41,17 @@ export const reexportedImportsClass = css`
   }
 `;
 
-// Members of namespace imports are not resolved → NOT extracted
+// Members of namespace imports resolve
 export const namespaceImportClass = css`
   color: ${helper.default};
 `;
 
-// Neither are destructured exports → NOT extracted
+// Destructured exports are not resolved → NOT extracted
 export const destructuredExportClass = css`
   color: ${destructured};
 `;
 
-// Nor exports from other modules → NOT extracted
+// Exports from other modules resolve
 export const reexportClass = css`
   font-weight: ${reexported};
 `;
