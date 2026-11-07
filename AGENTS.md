@@ -27,6 +27,8 @@ Node 24+ is required.
 
 **Before pushing**, merge the target branch into your branch to ensure you're working with up-to-date code, conflicts are caught early, and reviewers see accurate diffs.
 
+Stacked PRs, managed with [gh-stack](https://github.com/github/gh-stack), are rebased instead. When a stacked PR merges, GitHub rebases the PRs above it by replaying only their own commits, which would drop merge commits along with the conflict resolutions in them. After changing a lower branch, run `gh stack rebase`, then `gh stack push` rather than `git push`, as it force-pushes with a lease and records the commit that each branch is replayed from on the next rebase. To catch up with `main` or with a merged PR of the stack, run `gh stack sync`, which rebases and pushes. Merge stacked PRs with `gh stack merge`, as `gh pr merge` cannot.
+
 **Before committing**, you must format the code, then run all checks and fix any failures:
 
 ```sh
