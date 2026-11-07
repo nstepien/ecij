@@ -10,17 +10,6 @@ import { createVitest } from 'vitest/node';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
 
-// Normalize the absolute paths of a log, so that snapshots are stable across machines
-function normalizeLog(log: RolldownLog) {
-  if (log.id !== undefined) {
-    log.id = normalize(log.id);
-  }
-  if (log.loc?.file !== undefined) {
-    log.loc.file = normalize(log.loc.file);
-  }
-  return log;
-}
-
 // Helper to run a Vite build with the ecij plugin
 async function buildWithPlugin(
   entry: string,
@@ -42,7 +31,14 @@ async function buildWithPlugin(
         ...opts?.rolldownOptions,
         onLog(level, log, handler) {
           if (log.plugin === 'ecij') {
-            logs.push(normalizeLog(log));
+            // Normalize absolute paths so snapshots are stable across machines
+            if (log.id !== undefined) {
+              log.id = normalize(log.id);
+            }
+            if (log.loc?.file !== undefined) {
+              log.loc.file = normalize(log.loc.file);
+            }
+            logs.push(log);
           } else {
             handler(level, log);
           }
@@ -2239,7 +2235,7 @@ test('keep the declarations of TypeScript namespaces out of the module scope', a
       },
     ],
     onLog(_level, log) {
-      logs.push(normalizeLog(log));
+      logs.push(log);
     },
   });
   const { output } = await bundle.generate();
