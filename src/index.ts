@@ -46,6 +46,8 @@ export interface Configuration {
   classPrefix?: string | undefined | null;
 }
 
+type MaybePromise<T> = T | Promise<T>;
+
 /** A binding imported by name from another module. */
 interface ImportBinding {
   type: 'ImportBinding';
@@ -437,7 +439,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
    *
    * Key: module ID, Value: parse of the module
    */
-  const parsedFileInfoCache = new Map<string, ParsedFileInfo | Promise<ParsedFileInfo>>();
+  const parsedFileInfoCache = new Map<string, MaybePromise<ParsedFileInfo>>();
 
   /**
    * Generated CSS module IDs for each source file, imported ahead of the stylesheet of any
@@ -581,7 +583,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
   function loadParsedFile(
     context: TransformPluginContext,
     filePath: string,
-  ): ParsedFileInfo | Promise<ParsedFileInfo> {
+  ): MaybePromise<ParsedFileInfo> {
     let parsedInfo = parsedFileInfoCache.get(filePath);
 
     if (parsedInfo === undefined) {
@@ -628,8 +630,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
     // Values of the `const` and imported bindings resolved so far, unknown ones included, keyed by
     // initializer or import. A binding is cached as unknown while it is resolved, so that a cycle
-    // stays unknown. The cache is not shared with other transforms, as values read through imports
-    // can change in between.
+    // stays unknown, and its value replaces it once resolved: a cached promise would make a cycle
+    // wait for itself. The cache is not shared with other transforms, as values read through
+    // imports can change in between.
     const bindingValues = new Map<Expression | ImportBinding, string | undefined>();
 
     // The modules that interpolated values are imported from, keyed by importer and import
@@ -687,11 +690,12 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Statically evaluates an expression of a file, like an interpolation or the initializer of a
     // `const`, to its string value: a string or number literal, including signed numbers (`-5`,
     // `+5`), or an identifier bound to such a value or to a class name, in the file or imported.
-    async function resolveValue(
+    // The value is only returned as a promise when an import has to be loaded first.
+    function resolveValue(
       expression: Expression,
       scope: Scope,
       fileInfo: ParsedFileInfo,
-    ): Promise<string | undefined> {
+    ): MaybePromise<string | undefined> {
       if (expression.type === 'Literal') {
         if (typeof expression.value === 'string' || typeof expression.value === 'number') {
           return String(expression.value);
@@ -730,11 +734,11 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // template or the value of its initializer, and an import the value that its module exports.
     // Other bindings have unknown values (like function params), which stops the lookup and
     // signals "can't resolve".
-    async function resolveBinding(
+    function resolveBinding(
       name: string,
       scope: Scope,
       fileInfo: ParsedFileInfo,
-    ): Promise<string | undefined> {
+    ): MaybePromise<string | undefined> {
       const binding = scope.identifiers.get(name);
 
       if (binding === undefined) {
@@ -746,17 +750,26 @@ export function ecij(configuration?: Configuration | null): Plugin {
         return fileInfo.declarations.get(binding)?.className;
       }
 
-      if (!bindingValues.has(binding)) {
-        bindingValues.set(binding, undefined);
-        bindingValues.set(
-          binding,
-          await (binding.type === 'ImportBinding'
-            ? resolveImport(binding, fileInfo)
-            : resolveValue(binding, scope, fileInfo)),
-        );
+      if (bindingValues.has(binding)) {
+        return bindingValues.get(binding);
       }
 
-      return bindingValues.get(binding);
+      bindingValues.set(binding, undefined);
+
+      const value =
+        binding.type === 'ImportBinding'
+          ? resolveImport(binding, fileInfo)
+          : resolveValue(binding, scope, fileInfo);
+
+      if (value instanceof Promise) {
+        return value.then((resolvedValue) => {
+          bindingValues.set(binding, resolvedValue);
+          return resolvedValue;
+        });
+      }
+
+      bindingValues.set(binding, value);
+      return value;
     }
 
     // Resolves an import of a file to the value of the binding its module exports by that name,
