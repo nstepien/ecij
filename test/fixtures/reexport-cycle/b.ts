@@ -1,0 +1,7 @@
+// a.ts exports `loop` back to this module
+
+// @ts-expect-error -- circular definition
+import { loop } from './a';
+
+// @ts-expect-error -- circular definition
+export { loop };

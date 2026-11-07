@@ -1,5 +1,5 @@
-// @ts-nocheck — enums and namespaces are not erasable syntax (tsconfig), and
-// the plugin must see them raw
+// @ts-nocheck — enums are not erasable syntax (tsconfig), and the plugin must
+// see them raw
 import { css } from 'ecij';
 
 // A `.js` module that Rolldown is told to treat as JSX (`moduleTypes`)
@@ -23,8 +23,8 @@ export const usesTypedTone = css`
   border-color: ${nsAnnotated};
 `;
 
-// TypeScript enums and namespaces only reach the plugin as such here (Vite
-// lowers them first). An enum shadows the outer binding of the same name…
+// TypeScript enums only reach the plugin as such here (Vite lowers them
+// first). An enum shadows the outer binding of the same name.
 export function enumShadow() {
   enum toneAnnotation {
     A = 'x',
@@ -34,42 +34,8 @@ export function enumShadow() {
   `;
 }
 
-// …and a namespace's members are scoped to it: `spec` below is still '12px'.
-namespace Local {
-  export const spec = 'wrong';
-}
-console.log(Local.spec);
-
-export const usesSpecAfterNamespace = css`
-  width: ${spec};
-`;
-
 export const usesJsxClass = css`
   &.${jsxClass} {
     color: red;
   }
 `;
-
-// `import x = …` binds like a declaration: inside `Aliased`, `spec` is the
-// namespace member, not the module-level constant.
-namespace Aliased {
-  import spec = Local.spec;
-  export const usesAlias = css`
-    width: ${spec};
-  `;
-}
-console.log(Aliased.usesAlias);
-
-// A dotted namespace binds its first name, and ambient declarations bind nothing
-namespace Dotted.Inner {
-  export const spec = 'wrong';
-}
-console.log(Dotted.Inner.spec);
-
-declare global {
-  var ambientSpec: string;
-}
-
-declare module 'virtual:ambient' {
-  export const spec: string;
-}

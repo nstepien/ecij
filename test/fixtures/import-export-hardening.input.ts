@@ -13,6 +13,8 @@ import wrappedClass from './export-default-wrapped-css';
 import { styles as chainedStyles } from './ns-chain';
 // Namespace re-export reached through an `export *` aggregation
 import { styles as starChainedStyles } from './ns-chain-star';
+// Namespace import exported again (`import * as ns from 'mod'; export { ns };`)
+import { styles as reexportedNamespaceImport } from './ns-import-reexport';
 // Nested namespace member access (`ns.inner.member`)
 import * as outerNs from './reexports-namespace';
 
@@ -60,4 +62,9 @@ export const usesForwardDefault = css`
 export const usesDefaultFunction = css`
   /* uses default-function */
   color: ${defaultFunction as unknown as string};
+`;
+
+export const usesReexportedNamespaceImport = css`
+  /* uses reexported-namespace-import */
+  color: ${reexportedNamespaceImport.accentColor};
 `;

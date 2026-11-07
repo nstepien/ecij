@@ -1,0 +1,57 @@
+import { css } from 'ecij';
+
+import defaultColor, {
+  default as namedDefaultColor,
+  'string name' as stringName,
+  reexportedSize,
+  reexportedClass,
+  destructured,
+  reexported,
+} from './import-forms-helper';
+import * as helper from './import-forms-helper';
+import defaultClass from './import-forms-style';
+import { themeColor } from './import-forms-types';
+
+// Imports and exports can be named by strings
+export const stringNameClass = css`
+  color: ${stringName};
+`;
+
+// Default imports resolve, of values and class names alike
+export const defaultImportsClass = css`
+  color: ${defaultColor};
+  border-color: ${namedDefaultColor};
+
+  &.${defaultClass} {
+    color: inherit;
+  }
+`;
+
+// Exports resolve beside a default export without a value
+export const typedModuleClass = css`
+  color: ${themeColor};
+`;
+
+// Imports exported again resolve in the module they are imported from
+export const reexportedImportsClass = css`
+  font-size: ${reexportedSize}px;
+
+  &.${reexportedClass} {
+    color: navy;
+  }
+`;
+
+// Members of namespace imports resolve
+export const namespaceImportClass = css`
+  color: ${helper.default};
+`;
+
+// Destructured exports are not resolved → NOT extracted
+export const destructuredExportClass = css`
+  color: ${destructured};
+`;
+
+// Exports from other modules resolve
+export const reexportClass = css`
+  font-weight: ${reexported};
+`;

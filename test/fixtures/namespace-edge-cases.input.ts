@@ -36,3 +36,10 @@ export const starDefaultAsScalar = css`
 export const memberOfValue = css`
   color: ${namedStyles.accentColor.length};
 `;
+
+// `${local.member}` — only the namespaces of imported modules have members to
+// resolve, not local objects.
+const theme = { color: 'teal' };
+export const memberOfLocal = css`
+  color: ${theme.color};
+`;

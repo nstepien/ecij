@@ -35,6 +35,7 @@
   "rules": {
     "eslint/no-await-in-loop": "off",
     "eslint/no-shadow": "off",
+    "eslint/prefer-const": "warn",
     "typescript/consistent-return": "off",
     "typescript/no-unsafe-type-assertion": "off"
   }
