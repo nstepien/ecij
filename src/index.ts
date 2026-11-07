@@ -345,8 +345,10 @@ const SCOPE_VISITOR = new Visitor({
   },
   'StaticBlock:exit': popScope,
 
-  // TypeScript namespaces have their own scope, like `declare module` and `declare global`
-  // blocks. A namespace compiles to a function, so it is function-scoped for `var` declarations.
+  // TypeScript namespaces are not supported, but they get a scope of their own, so that their
+  // declarations cannot override the module's bindings, ecij's `css` included. `TSModuleBlock` is
+  // also the body of `declare module` and `declare global` blocks. A namespace compiles to a
+  // function, so it is function-scoped for `var` declarations.
   TSModuleBlock() {
     pushScope(true);
   },

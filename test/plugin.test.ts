@@ -2217,7 +2217,7 @@ test('hoisted local bindings declared after the template shadow the (aliased) cs
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
-test('scope the declarations of TypeScript namespaces to their body', async () => {
+test('keep the declarations of TypeScript namespaces out of the module scope', async () => {
   const logs: RolldownLog[] = [];
   const stylesheets: string[] = [];
 
@@ -2245,71 +2245,24 @@ test('scope the declarations of TypeScript namespaces to their body', async () =
   const { output } = await bundle.generate();
 
   expect(output[0].code).toMatchInlineSnapshot(`
-    "// index.js
-    function css() {
-    	throw new Error("css\`\` should have been transformed by the ecij plugin");
-    }
-    // test/fixtures/namespace-scoping.input.ts
+    "// test/fixtures/namespace-scoping.input.ts
     let Theme;
     (function(_Theme) {
-    	_Theme.muted = "gray";
-    	_Theme.accentClass = (() => "css-29099e80")();
+    	_Theme.accent = "red";
+    	_Theme.css = String.raw;
     })(Theme || (Theme = {}));
-    const moduleAccentClass = (() => "css-fa93f45f")();
-    (function(_Theme2) {
-    	_Theme2.mutedClass = css\`
-        color: \${muted};
-      \`;
-    })(Theme || (Theme = {}));
-    let Fake;
-    (function(_Fake) {
-    	_Fake.fakeClass = (0, String.raw)\`
-        color: green;
-      \`;
-    })(Fake || (Fake = {}));
-    const moduleClass = (() => "css-78ce3552")();
-    export { Fake, Theme, moduleAccentClass, moduleClass };
+    const moduleClass = (() => "css-0d370730")();
+    export { Theme, moduleClass };
     "
   `);
   expect(stylesheets).toMatchInlineSnapshot(`
     [
-      ".css-29099e80 {
-      color: red;
-    }
-
-    .css-fa93f45f {
-      color: blue;
-    }
-
-    .css-78ce3552 {
+      ".css-0d370730 {
       color: blue;
     }",
     ]
   `);
-  expect(logs).toMatchInlineSnapshot(`
-    [
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "26:   // resolve them either → NOT extracted
-    27:   export const mutedClass = css\`
-    28:     color: \${muted};
-                     ^
-    29:   \`;
-    30: }",
-        "hook": "transform",
-        "id": "test/fixtures/namespace-scoping.input.ts",
-        "loc": {
-          "column": 13,
-          "file": "test/fixtures/namespace-scoping.input.ts",
-          "line": 28,
-        },
-        "message": "skipped CSS extraction — could not resolve "muted" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 714,
-      },
-    ]
-  `);
+  expect(logs).toMatchInlineSnapshot(`[]`);
 });
 
 // Inlining the class names would leave the module they were declared in without any used export,
