@@ -412,7 +412,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
   const exclude = configuration?.exclude ?? [NODE_MODULES_REGEX, D_TS_FILE_REGEX];
   const classPrefix = configuration?.classPrefix ?? 'css-';
 
-  const parsedFileInfoCache = new Map<string, ParsedFileInfo>();
+  /**
+   * The parse of each module, of its transformed code or of the file read from disk, cached as
+   * soon as it is requested.
+   *
+   * Key: module ID, Value: parse of the module
+   */
+  const parsedFileInfoCache = new Map<string, ParsedFileInfo | Promise<ParsedFileInfo>>();
 
   /**
    * Generated CSS module IDs for each source file, imported ahead of the stylesheet of any
@@ -458,31 +464,11 @@ export function ecij(configuration?: Configuration | null): Plugin {
   }
 
   /**
-   * Parses a file and extracts all relevant information in a single pass.
+   * Parses the code of a file and extracts all relevant information in a single pass.
    */
-  async function parseFile(
-    context: TransformPluginContext,
-    filePath: string,
-    code?: string,
-    lang?: ParseLang,
-  ): Promise<ParsedFileInfo> {
-    // The code loaded from `readFile` might not be identical
-    // to the code passed in after it has been processed by other plugins;
-    // as such, we cannot rely on the position of declarations being the same,
-    // and the new code should be parsed.
-    if (code === undefined) {
-      const cachedInfo = parsedFileInfoCache.get(filePath);
-
-      if (cachedInfo !== undefined) {
-        return cachedInfo;
-      }
-    }
-
-    // Read the source file
-    const sourceText = code ?? (await context.fs.readFile(filePath, { encoding: 'utf8' }));
-
+  function parseFile(filePath: string, code: string, lang?: ParseLang): ParsedFileInfo {
     // Parse the code as the language the module was assigned, like JSX in a .js file
-    const { program } = parseSync(filePath, sourceText, lang === undefined ? undefined : { lang });
+    const { program } = parseSync(filePath, code, lang === undefined ? undefined : { lang });
     const importedIdentifiers = new Map<string, { source: string; imported: string }>();
     const exportedLocalNames = new Map<string, string>();
     // Local bindings of `css` imported from 'ecij' (including aliases)
@@ -561,17 +547,39 @@ export function ecij(configuration?: Configuration | null): Plugin {
       declarations.set(node, { className, scope });
     }
 
-    const parsedInfo: ParsedFileInfo = {
+    return {
       filePath,
       declarations,
       importedIdentifiers,
       exportedLocalNames,
       rootScope,
     };
+  }
 
-    parsedFileInfoCache.set(filePath, parsedInfo);
+  /**
+   * The parse of a module that values are imported from, cached or read from disk. The parse of
+   * the file is cached while it is pending: the transforms of the modules importing it run
+   * concurrently, so they would otherwise all miss the cache, and each read and parse the file.
+   */
+  function loadParsedFile(
+    context: TransformPluginContext,
+    filePath: string,
+  ): ParsedFileInfo | Promise<ParsedFileInfo> {
+    let parsedInfo = parsedFileInfoCache.get(filePath);
+
+    if (parsedInfo === undefined) {
+      parsedInfo = readParsedFile(context, filePath);
+      parsedFileInfoCache.set(filePath, parsedInfo);
+    }
 
     return parsedInfo;
+  }
+
+  async function readParsedFile(
+    context: TransformPluginContext,
+    filePath: string,
+  ): Promise<ParsedFileInfo> {
+    return parseFile(filePath, await context.fs.readFile(filePath, { encoding: 'utf8' }));
   }
 
   /**
@@ -589,7 +597,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
     cssContent: string;
     stylesheetDependencies: Set<string>;
   }> {
-    const parsedInfo = await parseFile(context, filePath, code, parseLangOf(meta.moduleType));
+    // Parse the code being transformed, as other plugins may have changed it since it was read
+    // from disk, and share the parse with the transforms that interpolate its values
+    const parsedInfo = parseFile(filePath, code, parseLangOf(meta.moduleType));
+    parsedFileInfoCache.set(filePath, parsedInfo);
     const { declarations } = parsedInfo;
 
     // Created with the first extraction, so files without any are returned untouched
@@ -652,7 +663,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
         }
       }
 
-      return { id, importedFileInfo: await parseFile(context, id) };
+      return { id, importedFileInfo: await loadParsedFile(context, id) };
     }
 
     // Statically evaluates an expression of a file, like an interpolation or the initializer of a
