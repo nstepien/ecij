@@ -595,10 +595,13 @@ test('inline string and number literal interpolations', async () => {
     var negativeNumberClass = (() => "css-f5d083cc")();
     var unaryPlusClass = (() => "css-3924bbbe")();
     var signedConstClass = (() => "css-2cff9334")();
+    var negatedConstClass = css\`
+      margin: \${-4}px;
+    \`;
     var booleanLiteralClass = css\`
       color: \${true};
     \`;
-    export { booleanLiteralClass, mixedClass, negativeNumberClass, numberLiteralClass, signedConstClass, stringLiteralClass, unaryPlusClass };"
+    export { booleanLiteralClass, mixedClass, negatedConstClass, negativeNumberClass, numberLiteralClass, signedConstClass, stringLiteralClass, unaryPlusClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-1c8f4a51 {
@@ -633,22 +636,42 @@ test('inline string and number literal interpolations', async () => {
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "25: \`;
-    26: export const booleanLiteralClass = css\`
-    27:   color: \${true};
+        "frame": "26: const gap = 4;
+    27: export const negatedConstClass = css\`
+    28:   margin: \${-gap}px;
+                    ^
+    29: \`;
+    30: export const booleanLiteralClass = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/literal-interpolation.input.ts",
+        "loc": {
+          "column": 12,
+          "file": "test/fixtures/literal-interpolation.input.ts",
+          "line": 28,
+        },
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "plugin": "ecij",
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 609,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "29: \`;
+    30: export const booleanLiteralClass = css\`
+    31:   color: \${true};
                    ^
-    28: \`;",
+    32: \`;",
         "hook": "transform",
         "id": "test/fixtures/literal-interpolation.input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/literal-interpolation.input.ts",
-          "line": 27,
+          "line": 31,
         },
         "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
         "plugin": "ecij",
         "pluginCode": "COMPLEX_INTERPOLATION",
-        "pos": 595,
+        "pos": 672,
       },
     ]
   `);

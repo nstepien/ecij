@@ -36,6 +36,12 @@ export const signedConstClass = css`
   margin: ${negativeOffset}px;
 `;
 
+// Signs only apply to number literals, so a negated const is rejected
+const gap = 4;
+export const negatedConstClass = css`
+  margin: ${-gap}px;
+`;
+
 // Boolean literal is still rejected
 export const booleanLiteralClass = css`
   color: ${true as unknown as string};

@@ -692,22 +692,24 @@ export function ecij(configuration?: Configuration | null): Plugin {
       scope: Scope,
       fileInfo: ParsedFileInfo,
     ): Promise<string | undefined> {
-      if (
-        expression.type === 'Literal' &&
-        (typeof expression.value === 'string' || typeof expression.value === 'number')
-      ) {
-        return String(expression.value);
+      if (expression.type === 'Literal') {
+        if (typeof expression.value === 'string' || typeof expression.value === 'number') {
+          return String(expression.value);
+        }
+        return;
       }
 
-      if (
-        expression.type === 'UnaryExpression' &&
-        (expression.operator === '-' || expression.operator === '+') &&
-        expression.argument.type === 'Literal' &&
-        typeof expression.argument.value === 'number'
-      ) {
-        return String(
-          expression.operator === '-' ? -expression.argument.value : expression.argument.value,
-        );
+      if (expression.type === 'UnaryExpression') {
+        if (
+          (expression.operator === '-' || expression.operator === '+') &&
+          expression.argument.type === 'Literal' &&
+          typeof expression.argument.value === 'number'
+        ) {
+          return String(
+            expression.operator === '-' ? -expression.argument.value : expression.argument.value,
+          );
+        }
+        return;
       }
 
       if (expression.type !== 'Identifier') {
