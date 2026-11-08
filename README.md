@@ -141,6 +141,7 @@ Interpolations are resolved at build time, following lexical scoping:
 import { css } from 'ecij';
 
 import { iconClassname } from './icon';
+import * as theme from './theme';
 import { spacing } from './tokens';
 
 const brand = 'blue';
@@ -150,6 +151,7 @@ export const buttonClassname = css`
   margin: ${-1}px ${8}px; /* string and number literals, including signed numbers */
   color: ${accent}; /* const bindings of such literals or of other bindings that resolve */
   padding: ${spacing}px; /* named and default imports of such values from other modules */
+  background: ${theme.surface}; /* and the members of namespace imports */
 
   /* generated class names, including imported ones */
   &:hover .${iconClassname} {
@@ -160,7 +162,7 @@ export const buttonClassname = css`
 
 `let` and `var` bindings, parameters, and destructured bindings are never resolved, but they still shadow outer bindings of the same name.
 
-Any other interpolation, like a call, a ternary, a template literal, or an identifier that does not resolve, causes the whole ` css`` ` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
+Any other interpolation, like a call, a ternary, a template literal, an object property, or an identifier that does not resolve, causes the whole ` css`` ` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
 
 The `css` tag must be a named import from `'ecij'`, which may be aliased, like `import { css as styled } from 'ecij'`. A local binding of the same name shadows it, so its templates are left alone.
 
@@ -191,4 +193,4 @@ npm test -- -u
 
 ## TODO
 
-- Full import/export handling (namespace imports and re-exports)
+- Full import/export handling (re-exports)
