@@ -794,7 +794,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Resolves the binding `name` declared in `scope`: a `const` takes the class name of its css``
     // template or the value of its initializer, a namespace import the namespace of its module,
     // and another import the value that its module exports. Other bindings have unknown values
-    // (like function params), which stops the lookup and signals "can't resolve".
+    // (like function params), which stops the lookup and signals "can't resolve". It is not
+    // async, as returning every binding as a promise measurably slows down builds with many named
+    // imports.
     function resolveBinding(
       name: string,
       scope: Scope,
@@ -818,9 +820,11 @@ export function ecij(configuration?: Configuration | null): Plugin {
       bindingValues.set(binding, undefined);
 
       const value =
-        binding.type === 'ImportBinding' || binding.type === 'NamespaceImport'
-          ? resolveImport(binding, fileInfo)
-          : resolveValue(binding, scope, fileInfo);
+        binding.type === 'ImportBinding'
+          ? resolveMember(loadImportedModule(binding.source, fileInfo.filePath), binding.imported)
+          : binding.type === 'NamespaceImport'
+            ? loadImportedModule(binding.source, fileInfo.filePath)
+            : resolveValue(binding, scope, fileInfo);
 
       if (value instanceof Promise) {
         return value.then((resolvedValue) => {
@@ -831,19 +835,6 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
       bindingValues.set(binding, value);
       return value;
-    }
-
-    // Resolves an import of a file: a namespace import to the namespace of its module, and another
-    // import to the member of that namespace that it imports
-    function resolveImport(
-      binding: ImportBinding | NamespaceImport,
-      fileInfo: ParsedFileInfo,
-    ): Promise<StaticValue | undefined> {
-      const namespace = loadImportedModule(binding.source, fileInfo.filePath);
-
-      return binding.type === 'NamespaceImport'
-        ? namespace
-        : resolveMember(namespace, binding.imported);
     }
 
     // Resolves the member `name` of a value, which only the namespaces of modules have: the value
