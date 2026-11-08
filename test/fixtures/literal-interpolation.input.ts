@@ -1,5 +1,7 @@
 import { css } from 'ecij';
 
+import { fontSize } from './imported-literals';
+
 // Inline string literal
 export const stringLiteralClass = css`
   color: ${'blue'};
@@ -36,10 +38,22 @@ export const signedConstClass = css`
   margin: ${negativeOffset}px;
 `;
 
-// Signs only apply to number literals, so a negated const is rejected
+// Signs apply to any value that resolves to a number, which they convert like JS does
 const gap = 4;
-export const negatedConstClass = css`
-  margin: ${-gap}px;
+export const signedValueClass = css`
+  margin: ${-gap}px ${-negativeOffset}px;
+  top: ${-fontSize}px;
+  opacity: ${+'0.50'};
+`;
+
+// Signs on values that are not numbers do not resolve → NOT extracted
+export const signedStringClass = css`
+  margin: ${-baseColor}px;
+`;
+
+// Nor do other unary operators → NOT extracted
+export const bitwiseNotClass = css`
+  margin: ${~gap}px;
 `;
 
 // Boolean literal is still rejected
