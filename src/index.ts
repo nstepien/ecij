@@ -105,6 +105,10 @@ const JS_TS_FILE_REGEX = /\.[cm]?[jt]sx?$/;
 const NODE_MODULES_REGEX = /\/node_modules\//;
 const D_TS_FILE_REGEX = /\.d\.ts$/;
 
+// Match the named imports from ecij, the only way to import its `css` tag, like
+// `import { css } from 'ecij'`, with or without spaces, as minified code has none
+const ECIJ_IMPORT_REGEX = /\}\s*from\s*["']ecij["']/;
+
 // Match the generated stylesheet IDs, like /src/Button.tsx.1a2b3c4d.css
 const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 
@@ -945,7 +949,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
       // while their CSS can depend on the values they import. Keep the modules that `transform`
       // handles out of it, like its `code` filter.
       defineCacheKeyGenerator(({ sourceCode }) =>
-        sourceCode.includes('ecij') ? false : undefined,
+        ECIJ_IMPORT_REGEX.test(sourceCode) ? false : undefined,
       );
     },
 
@@ -972,8 +976,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
           include: makeIdFiltersToMatchWithQuery(include),
           exclude: makeIdFiltersToMatchWithQuery(exclude),
         },
-        // Skip files that do not reference 'ecij' before the handler is called
-        code: 'ecij',
+        // Skip files that do not import from 'ecij' before the handler is called
+        code: ECIJ_IMPORT_REGEX,
       },
       async handler(code, id, meta) {
         // Remove query parameters from the ID

@@ -512,6 +512,24 @@ test('ignore non-ecij css tag functions', async () => {
   expect(result.logs).toMatchInlineSnapshot(`[]`);
 });
 
+// Vite only compiles TypeScript and JSX before the plugin, so a .js module keeps its spacing
+test('extract CSS from modules that import css without spaces, like minified ones', async () => {
+  const fixturePath = './test/fixtures/minified-import.input.js';
+  const result = await buildWithPlugin(fixturePath);
+
+  expect(result.js).toMatchInlineSnapshot(`
+    "// test/fixtures/minified-import.input.js
+    var minifiedClass = (() => "css-20cd072c")();
+    export { minifiedClass };"
+  `);
+  expect(result.css).toMatchInlineSnapshot(`
+    ".css-20cd072c {
+      color: red;
+    }/*$vite$:1*/"
+  `);
+  expect(result.logs).toMatchInlineSnapshot(`[]`);
+});
+
 test('skip css blocks with complex interpolations', async () => {
   const fixturePath = './test/fixtures/complex-interpolation.input.ts';
   const result = await buildWithPlugin(fixturePath);
