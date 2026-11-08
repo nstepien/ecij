@@ -41,12 +41,12 @@ export const reexportedImportsClass = css`
   }
 `;
 
-// Members of namespace imports are not resolved → NOT extracted
+// Members of namespace imports resolve, the default export included
 export const namespaceImportClass = css`
   color: ${helper.default};
 `;
 
-// Neither are destructured exports → NOT extracted
+// Destructured exports do not → NOT extracted
 export const destructuredExportClass = css`
   color: ${destructured};
 `;

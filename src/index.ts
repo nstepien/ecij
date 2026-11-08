@@ -6,6 +6,7 @@ import type {
   BindingPattern,
   BlockStatement,
   Expression,
+  MemberExpression,
   ModuleExportName,
   ParamPattern,
   Program,
@@ -56,12 +57,18 @@ interface ImportBinding {
   imported: string;
 }
 
+/** The namespace of another module, imported with `import * as ns`. */
+interface NamespaceImport {
+  type: 'NamespaceImport';
+  source: string;
+}
+
 interface Scope {
   /**
    * The initializer of each `const` or the import of each imported binding, resolved on demand, or
    * `undefined` for the bindings whose value is unknown at build time (like function params).
    */
-  identifiers: Map<string, Expression | ImportBinding | undefined>;
+  identifiers: Map<string, Expression | ImportBinding | NamespaceImport | undefined>;
   parent: Scope | null;
   /** `true` for function/module/static-block scopes (where `var` bindings land). */
   isFunctionScope: boolean;
@@ -94,6 +101,10 @@ interface ParsedFileInfo {
   /** Module-level scope, where the imports and the exported bindings are declared. */
   readonly rootScope: Scope;
 }
+
+// A value known at build time: a string, numbers and class names included, or the namespace of a
+// module, represented by its parse, whose members are the exports of the module
+type StaticValue = string | ParsedFileInfo;
 
 // Languages the parser can be told to parse a module as, see `meta.moduleType`
 type ParseLang = 'js' | 'jsx' | 'ts' | 'tsx';
@@ -133,6 +144,33 @@ function parseLangOf(moduleType: string): ParseLang | undefined {
 // The name of an imported or exported binding, which can be a string: `export { a as "b" }`
 function nameOf(name: ModuleExportName): string {
   return name.type === 'Literal' ? name.value : name.name;
+}
+
+// The name of a member accessed with a dot, like `x` in `ns.x`, but not of a computed member, like
+// `ns['x']`, or of a private field
+function staticMemberNameOf(expression: MemberExpression): string | undefined {
+  return !expression.computed && expression.property.type === 'Identifier'
+    ? expression.property.name
+    : undefined;
+}
+
+// The name of an identifier, or of a chain of members of one, like `ns.inner.x`, by which warnings
+// refer to the interpolations that do not resolve
+function referenceNameOf(expression: Expression): string | undefined {
+  if (expression.type === 'Identifier') {
+    return expression.name;
+  }
+
+  if (expression.type !== 'MemberExpression') {
+    return;
+  }
+
+  const objectName = referenceNameOf(expression.object);
+  const memberName = staticMemberNameOf(expression);
+
+  return objectName === undefined || memberName === undefined
+    ? undefined
+    : `${objectName}.${memberName}`;
 }
 
 // The innermost scope of the chain that binds `name`, shadowing outer bindings and imports.
@@ -515,11 +553,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
         const source = statement.source.value;
 
         for (const specifier of statement.specifiers) {
-          // TODO: support namespace imports, unknown until then
           rootScope.identifiers.set(
             specifier.local.name,
             specifier.type === 'ImportNamespaceSpecifier'
-              ? undefined
+              ? { type: 'NamespaceImport', source }
               : {
                   type: 'ImportBinding',
                   source,
@@ -646,7 +683,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // stays unknown, and its value replaces it once resolved: a cached promise would make a cycle
     // wait for itself. The cache is not shared with other transforms, as values read through
     // imports can change in between.
-    const bindingValues = new Map<Expression | ImportBinding, string | undefined>();
+    const bindingValues = new Map<
+      Expression | ImportBinding | NamespaceImport,
+      StaticValue | undefined
+    >();
 
     // The modules that interpolated values are imported from, keyed by importer and import
     // source, so that each one is resolved, loaded, and parsed once per transform
@@ -682,7 +722,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
       dependents.add(filePath);
 
       // Wait for the imported module's transform, which registers the stylesheet that
-      // `resolveValue` imports. Vite's dev server does not transform modules loaded this way,
+      // `importStylesheet` imports. Vite's dev server does not transform modules loaded this way,
       // so there the stylesheet is only imported once that module has been transformed.
       // Loading a module whose transform waits for this one would never finish, which
       // happens when modules interpolate each other's class names. Its stylesheet is then
@@ -697,18 +737,19 @@ export function ecij(configuration?: Configuration | null): Plugin {
         }
       }
 
-      return { id, importedFileInfo: await loadParsedFile(context, id) };
+      return loadParsedFile(context, id);
     }
 
     // Statically evaluates an expression of a file, like an interpolation or the initializer of a
-    // `const`, to its string value: a string or number literal, including signed numbers (`-5`,
-    // `+5`), or an identifier bound to such a value or to a class name, in the file or imported.
-    // The value is only returned as a promise when an import has to be loaded first.
+    // `const`, to its value: a string or number literal, including signed numbers (`-5`, `+5`), an
+    // identifier bound to such a value, to a class name, or to the namespace of a module, in the
+    // file or imported, or a member of such a namespace (`ns.x`). The value is only returned as a
+    // promise when an import has to be loaded first.
     function resolveValue(
       expression: Expression,
       scope: Scope,
       fileInfo: ParsedFileInfo,
-    ): MaybePromise<string | undefined> {
+    ): MaybePromise<StaticValue | undefined> {
       if (expression.type === 'Literal') {
         if (typeof expression.value === 'string' || typeof expression.value === 'number') {
           return String(expression.value);
@@ -729,6 +770,13 @@ export function ecij(configuration?: Configuration | null): Plugin {
         return;
       }
 
+      if (expression.type === 'MemberExpression') {
+        const name = staticMemberNameOf(expression);
+        if (name === undefined) return;
+
+        return resolveMember(resolveValue(expression.object, scope, fileInfo), name);
+      }
+
       if (expression.type !== 'Identifier') {
         return;
       }
@@ -744,14 +792,14 @@ export function ecij(configuration?: Configuration | null): Plugin {
     }
 
     // Resolves the binding `name` declared in `scope`: a `const` takes the class name of its css``
-    // template or the value of its initializer, and an import the value that its module exports.
-    // Other bindings have unknown values (like function params), which stops the lookup and
-    // signals "can't resolve".
+    // template or the value of its initializer, a namespace import the namespace of its module,
+    // and another import the value that its module exports. Other bindings have unknown values
+    // (like function params), which stops the lookup and signals "can't resolve".
     function resolveBinding(
       name: string,
       scope: Scope,
       fileInfo: ParsedFileInfo,
-    ): MaybePromise<string | undefined> {
+    ): MaybePromise<StaticValue | undefined> {
       const binding = scope.identifiers.get(name);
 
       if (binding === undefined) {
@@ -770,7 +818,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
       bindingValues.set(binding, undefined);
 
       const value =
-        binding.type === 'ImportBinding'
+        binding.type === 'ImportBinding' || binding.type === 'NamespaceImport'
           ? resolveImport(binding, fileInfo)
           : resolveValue(binding, scope, fileInfo);
 
@@ -785,30 +833,57 @@ export function ecij(configuration?: Configuration | null): Plugin {
       return value;
     }
 
-    // Resolves an import of a file to the value of the binding its module exports by that name,
-    // which can itself be an import
-    async function resolveImport(
-      { source, imported }: ImportBinding,
+    // Resolves an import of a file: a namespace import to the namespace of its module, and another
+    // import to the member of that namespace that it imports
+    function resolveImport(
+      binding: ImportBinding | NamespaceImport,
       fileInfo: ParsedFileInfo,
-    ): Promise<string | undefined> {
-      const loadedModule = await loadImportedModule(source, fileInfo.filePath);
-      if (loadedModule === undefined) return;
+    ): MaybePromise<StaticValue | undefined> {
+      const namespace = loadImportedModule(binding.source, fileInfo.filePath);
 
-      const { id, importedFileInfo } = loadedModule;
-      const localName = importedFileInfo.exportedLocalNames.get(imported);
-      if (localName === undefined) return;
+      return binding.type === 'NamespaceImport'
+        ? namespace
+        : resolveMember(namespace, binding.imported);
+    }
 
-      const value = await resolveBinding(localName, importedFileInfo.rootScope, importedFileInfo);
-
-      if (value !== undefined) {
-        const stylesheetImport = stylesheetImportPerFile.get(id);
-
-        if (stylesheetImport !== undefined) {
-          stylesheetDependencies.add(stylesheetImport);
-        }
+    // Resolves the member `name` of a value, which only the namespaces of modules have: the value
+    // of the binding that the module exports by that name, which can itself be an import
+    function resolveMember(
+      object: MaybePromise<StaticValue | undefined>,
+      name: string,
+    ): MaybePromise<StaticValue | undefined> {
+      if (object instanceof Promise) {
+        return object.then((resolvedObject) => resolveMember(resolvedObject, name));
       }
 
+      if (typeof object !== 'object') return;
+
+      const localName = object.exportedLocalNames.get(name);
+      if (localName === undefined) return;
+
+      const value = resolveBinding(localName, object.rootScope, object);
+
+      if (value instanceof Promise) {
+        return value.then((resolvedValue) => {
+          importStylesheet(object, resolvedValue);
+          return resolvedValue;
+        });
+      }
+
+      importStylesheet(object, value);
       return value;
+    }
+
+    // Imports the stylesheet of a module ahead of this module's own when one of its exports
+    // resolves to a string, as it may be one of its class names
+    function importStylesheet(fileInfo: ParsedFileInfo, value: StaticValue | undefined) {
+      if (typeof value !== 'string') return;
+
+      const stylesheetImport = stylesheetImportPerFile.get(fileInfo.filePath);
+
+      if (stylesheetImport !== undefined) {
+        stylesheetDependencies.add(stylesheetImport);
+      }
     }
 
     // Build the CSS of each template, resolving its interpolations
@@ -826,13 +901,16 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
           const resolvedValue = await resolveValue(expression, scope, parsedInfo);
 
-          if (resolvedValue === undefined) {
-            if (expression.type === 'Identifier') {
+          // Only strings can be interpolated, not namespaces
+          if (typeof resolvedValue !== 'string') {
+            const name = referenceNameOf(expression);
+
+            if (name !== undefined) {
               // Cannot resolve — skip this entire css`` block
               context.warn(
                 {
                   pluginCode: 'UNRESOLVED_INTERPOLATION',
-                  message: `skipped CSS extraction — could not resolve "${expression.name}" to a static string or number`,
+                  message: `skipped CSS extraction — could not resolve "${name}" to a static string or number`,
                 },
                 expression.start,
               );
