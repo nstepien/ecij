@@ -722,7 +722,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
       dependents.add(filePath);
 
       // Wait for the imported module's transform, which registers the stylesheet that
-      // `importStylesheet` imports. Vite's dev server does not transform modules loaded this way,
+      // `resolveMember` imports. Vite's dev server does not transform modules loaded this way,
       // so there the stylesheet is only imported once that module has been transformed.
       // Loading a module whose transform waits for this one would never finish, which
       // happens when modules interpolate each other's class names. Its stylesheet is then
@@ -744,7 +744,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // `const`, to its value: a string or number literal, including signed numbers (`-5`, `+5`), an
     // identifier bound to such a value, to a class name, or to the namespace of a module, in the
     // file or imported, or a member of such a namespace (`ns.x`). The value is only returned as a
-    // promise when an import has to be loaded first.
+    // promise when it is read through an import or a member.
     function resolveValue(
       expression: Expression,
       scope: Scope,
@@ -838,7 +838,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     function resolveImport(
       binding: ImportBinding | NamespaceImport,
       fileInfo: ParsedFileInfo,
-    ): MaybePromise<StaticValue | undefined> {
+    ): Promise<StaticValue | undefined> {
       const namespace = loadImportedModule(binding.source, fileInfo.filePath);
 
       return binding.type === 'NamespaceImport'
@@ -847,43 +847,32 @@ export function ecij(configuration?: Configuration | null): Plugin {
     }
 
     // Resolves the member `name` of a value, which only the namespaces of modules have: the value
-    // of the binding that the module exports by that name, which can itself be an import
-    function resolveMember(
+    // of the binding that the module exports by that name, which can itself be an import. It is
+    // async, as returning members without a promise once their namespace is resolved is not
+    // measurably faster.
+    async function resolveMember(
       object: MaybePromise<StaticValue | undefined>,
       name: string,
-    ): MaybePromise<StaticValue | undefined> {
-      if (object instanceof Promise) {
-        return object.then((resolvedObject) => resolveMember(resolvedObject, name));
-      }
+    ): Promise<StaticValue | undefined> {
+      const namespace = await object;
+      if (typeof namespace !== 'object') return;
 
-      if (typeof object !== 'object') return;
-
-      const localName = object.exportedLocalNames.get(name);
+      const localName = namespace.exportedLocalNames.get(name);
       if (localName === undefined) return;
 
-      const value = resolveBinding(localName, object.rootScope, object);
+      const value = await resolveBinding(localName, namespace.rootScope, namespace);
 
-      if (value instanceof Promise) {
-        return value.then((resolvedValue) => {
-          importStylesheet(object, resolvedValue);
-          return resolvedValue;
-        });
+      // Import the stylesheet of that module ahead of this module's own when the value is a
+      // string, as it may be one of its class names
+      if (typeof value === 'string') {
+        const stylesheetImport = stylesheetImportPerFile.get(namespace.filePath);
+
+        if (stylesheetImport !== undefined) {
+          stylesheetDependencies.add(stylesheetImport);
+        }
       }
 
-      importStylesheet(object, value);
       return value;
-    }
-
-    // Imports the stylesheet of a module ahead of this module's own when one of its exports
-    // resolves to a string, as it may be one of its class names
-    function importStylesheet(fileInfo: ParsedFileInfo, value: StaticValue | undefined) {
-      if (typeof value !== 'string') return;
-
-      const stylesheetImport = stylesheetImportPerFile.get(fileInfo.filePath);
-
-      if (stylesheetImport !== undefined) {
-        stylesheetDependencies.add(stylesheetImport);
-      }
     }
 
     // Build the CSS of each template, resolving its interpolations
