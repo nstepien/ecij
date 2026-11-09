@@ -10,6 +10,17 @@ import { createVitest } from 'vitest/node';
 
 const normalize = (path: string) => path.replaceAll('\\', '/').replace(/^.*\/test\//, 'test/');
 
+// Normalize the absolute paths of a log so snapshots are stable across machines
+function normalizeLog(log: RolldownLog) {
+  if (log.id !== undefined) {
+    log.id = normalize(log.id);
+  }
+  if (log.loc?.file !== undefined) {
+    log.loc.file = normalize(log.loc.file);
+  }
+  return log;
+}
+
 // Helper to run a Vite build with the ecij plugin
 async function buildWithPlugin(
   entry: string,
@@ -31,14 +42,7 @@ async function buildWithPlugin(
         ...opts?.rolldownOptions,
         onLog(level, log, handler) {
           if (log.plugin === 'ecij') {
-            // Normalize absolute paths so snapshots are stable across machines
-            if (log.id !== undefined) {
-              log.id = normalize(log.id);
-            }
-            if (log.loc?.file !== undefined) {
-              log.loc.file = normalize(log.loc.file);
-            }
-            logs.push(log);
+            logs.push(normalizeLog(log));
           } else {
             handler(level, log);
           }
@@ -70,6 +74,36 @@ async function buildWithPlugin(
     map: jsChunk?.map,
     logs,
   };
+}
+
+// Helper to run a plain Rolldown build with the ecij plugin. Rolldown no longer bundles CSS, so a
+// stand-in CSS plugin collects the stylesheets and keeps them in the bundle as empty modules.
+async function bundleWithRolldown(input: string) {
+  const logs: RolldownLog[] = [];
+  const stylesheets: string[] = [];
+
+  const bundle = await rolldown({
+    input,
+    plugins: [
+      ecij(),
+      {
+        name: 'stylesheets-as-side-effects',
+        transform: {
+          filter: { id: /\.css$/ },
+          handler(code) {
+            stylesheets.push(code);
+            return { code: '', moduleType: 'js', moduleSideEffects: 'no-treeshake' };
+          },
+        },
+      },
+    ],
+    onLog(_level, log) {
+      logs.push(normalizeLog(log));
+    },
+  });
+  const { output } = await bundle.generate({ sourcemap: true });
+
+  return { chunk: output[0], stylesheets, logs };
 }
 
 // Helper to create a Vite dev server with the ecij plugin, which closes when disposed
@@ -246,29 +280,7 @@ test('emit sourcemaps for transformed modules without sourcemap warnings', async
 // Vite does not forward `meta.magicString` to transform hooks,
 // so this is the only test covering the native magic string path
 test('support plain Rolldown builds', async () => {
-  const logs: RolldownLog[] = [];
-
-  const bundle = await rolldown({
-    input: './test/fixtures/comprehensive.input.ts',
-    plugins: [
-      ecij(),
-      {
-        // Rolldown no longer bundles CSS, so stand in for a CSS plugin
-        name: 'stylesheets-as-side-effects',
-        transform: {
-          filter: { id: /\.css$/ },
-          handler() {
-            return { code: '', moduleType: 'js', moduleSideEffects: 'no-treeshake' };
-          },
-        },
-      },
-    ],
-    onLog(_level, log) {
-      logs.push(log);
-    },
-  });
-  const { output } = await bundle.generate({ sourcemap: true });
-  const [chunk] = output;
+  const { chunk, logs } = await bundleWithRolldown('./test/fixtures/comprehensive.input.ts');
 
   expect(logs).toMatchInlineSnapshot(`[]`);
   expect(chunk.code).toMatchInlineSnapshot(`
@@ -667,10 +679,18 @@ test('inline string and number literal interpolations', async () => {
     var bitwiseNotClass = css\`
       margin: \${-5}px;
     \`;
+    var bigIntClass = (() => "css-ff3598eb")();
+    var plusBigIntClass = css\`
+      order: \${+1n};
+    \`;
+    var templateLiteralClass = (() => "css-fb9bf175")();
+    var unresolvedTemplateLiteralClass = css\`
+      margin: \${\`truepx\`};
+    \`;
     var booleanLiteralClass = css\`
       color: \${true};
     \`;
-    export { bitwiseNotClass, booleanLiteralClass, mixedClass, negativeNumberClass, numberLiteralClass, signedConstClass, signedStringClass, signedValueClass, stringLiteralClass, unaryPlusClass };"
+    export { bigIntClass, bitwiseNotClass, booleanLiteralClass, mixedClass, negativeNumberClass, numberLiteralClass, plusBigIntClass, signedConstClass, signedStringClass, signedValueClass, stringLiteralClass, templateLiteralClass, unaryPlusClass, unresolvedTemplateLiteralClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-1c8f4a51 {
@@ -705,6 +725,17 @@ test('inline string and number literal interpolations', async () => {
       margin: -4px 5px;
       top: -16px;
       opacity: 0.5;
+    }
+
+    .css-ff3598eb {
+      z-index: 10;
+      order: -1;
+    }
+
+    .css-fb9bf175 {
+      color: blue;
+      border: 4px solid red;
+      font: bold 16px serif;
     }/*$vite$:1*/"
   `);
   expect(result.logs).toMatchInlineSnapshot(`
@@ -727,7 +758,7 @@ test('inline string and number literal interpolations', async () => {
         "message": "skipped CSS extraction — could not resolve "-baseColor" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 785,
+        "pos": 797,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -736,7 +767,7 @@ test('inline string and number literal interpolations', async () => {
     37:   margin: \${~gap}px;
                     ^
     38: \`;
-    39: export const booleanLiteralClass = css\`",
+    39: export const bigIntClass = css\`",
         "hook": "transform",
         "id": "test/fixtures/literal-interpolation.input.ts",
         "loc": {
@@ -747,26 +778,124 @@ test('inline string and number literal interpolations', async () => {
         "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
         "plugin": "ecij",
         "pluginCode": "COMPLEX_INTERPOLATION",
-        "pos": 851,
+        "pos": 863,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "38: \`;
-    39: export const booleanLiteralClass = css\`
-    40:   color: \${true};
+        "frame": "43: const plusBigInt = +1n;
+    44: export const plusBigIntClass = css\`
+    45:   order: \${plusBigInt};
                    ^
-    41: \`;",
+    46: \`;
+    47: const border = \`\${gap}px solid \${baseColor}\`;",
         "hook": "transform",
         "id": "test/fixtures/literal-interpolation.input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/literal-interpolation.input.ts",
-          "line": 40,
+          "line": 45,
+        },
+        "message": "skipped CSS extraction — could not resolve "plusBigInt" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1017,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "52: \`;
+    53: export const unresolvedTemplateLiteralClass = css\`
+    54:   margin: \${\`\${true}px\`};
+                    ^
+    55: \`;
+    56: export const booleanLiteralClass = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/literal-interpolation.input.ts",
+        "loc": {
+          "column": 12,
+          "file": "test/fixtures/literal-interpolation.input.ts",
+          "line": 54,
         },
         "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
         "plugin": "ecij",
         "pluginCode": "COMPLEX_INTERPOLATION",
-        "pos": 914,
+        "pos": 1275,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "55: \`;
+    56: export const booleanLiteralClass = css\`
+    57:   color: \${true};
+                   ^
+    58: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/literal-interpolation.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/literal-interpolation.input.ts",
+          "line": 57,
+        },
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "plugin": "ecij",
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 1343,
+      },
+    ]
+  `);
+});
+
+test('resolve values wrapped in parentheses or type assertions', async () => {
+  // Vite strips types before the plugin transforms a module, but Rolldown does not, and neither
+  // strips the modules that the plugin reads from disk, like `wrapped-values.ts`
+  const { chunk, stylesheets, logs } = await bundleWithRolldown(
+    './test/fixtures/wrapped-interpolation.input.ts',
+  );
+
+  expect(chunk.code).toMatchInlineSnapshot(`
+    "// index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    // test/fixtures/wrapped-interpolation.input.ts
+    const wrappedClass = (() => "css-03798772")();
+    const wrappedUnresolvedClass = css\`
+      color: \${unknownValue};
+    \`;
+    export { wrappedClass, wrappedUnresolvedClass };
+
+    //# sourceMappingURL=wrapped-interpolation.input.js.map"
+  `);
+  expect(stylesheets).toMatchInlineSnapshot(`
+    [
+      ".css-03798772 {
+      margin: 4px 4px 4px;
+      padding: -4px;
+      color: teal;
+      width: 10px;
+      border: 4px solid teal;
+      font-size: 16px;
+    }",
+    ]
+  `);
+  expect(logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "19: // The warning names the wrapped reference → NOT extracted
+    20: export const wrappedUnresolvedClass = css\`
+    21:   color: \${(unknownValue as string)!};
+                   ^
+    22: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/wrapped-interpolation.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/wrapped-interpolation.input.ts",
+          "line": 21,
+        },
+        "message": "skipped CSS extraction — could not resolve "unknownValue" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 674,
       },
     ]
   `);

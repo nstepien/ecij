@@ -1,6 +1,6 @@
 import { css } from 'ecij';
 
-import { fontSize } from './imported-literals';
+import { fontSize, fontWeight } from './imported-literals';
 
 // Inline string literal
 export const stringLiteralClass = css`
@@ -54,6 +54,32 @@ export const signedStringClass = css`
 // Nor do other unary operators → NOT extracted
 export const bitwiseNotClass = css`
   margin: ${~gap}px;
+`;
+
+// Big integer literals, signed too
+export const bigIntClass = css`
+  z-index: ${10n};
+  order: ${-1n};
+`;
+
+// `+` throws on big integers → NOT extracted
+// @ts-expect-error -- TypeScript rejects it too
+const plusBigInt = +1n;
+export const plusBigIntClass = css`
+  order: ${plusBigInt};
+`;
+
+// Template literals, once their interpolations resolve
+const border = `${gap}px solid ${baseColor}`;
+export const templateLiteralClass = css`
+  color: ${`blue`};
+  border: ${border};
+  font: ${`${fontWeight} ${fontSize}px serif`};
+`;
+
+// Template literals with interpolations that do not resolve → NOT extracted
+export const unresolvedTemplateLiteralClass = css`
+  margin: ${`${true}px`};
 `;
 
 // Boolean literal is still rejected
