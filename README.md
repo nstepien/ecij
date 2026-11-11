@@ -146,10 +146,12 @@ import { spacing } from './tokens';
 
 const brand = 'blue';
 const accent = brand;
+const outline = `2px solid ${accent}`;
 
 export const buttonClassname = css`
-  margin: ${8}px ${'auto'}; /* string and number literals */
+  margin: ${8}px ${'auto'}; /* string, number, and big integer literals */
   color: ${accent}; /* const bindings of such literals or of other bindings that resolve */
+  outline: ${outline}; /* template literals of such values */
   padding: ${spacing}px; /* named and default imports of such values from other modules */
   background: ${theme.surface}; /* the members of namespace imports */
   translate: ${-1}px ${-spacing}px; /* and any of these numbers, signed */
@@ -161,9 +163,11 @@ export const buttonClassname = css`
 `;
 ```
 
+Parentheses and TypeScript's type assertions, like `as`, `satisfies`, and `!`, keep the value they wrap, so `export const spacing = 8 as const` resolves too.
+
 `let` and `var` bindings, parameters, and destructured bindings are never resolved, but they still shadow outer bindings of the same name.
 
-Any other interpolation, like a call, a ternary, a template literal, an object property, an identifier that does not resolve, or a signed value that is not a number, causes the whole ` css`` ` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
+Any other interpolation, like a call, a ternary, an object property, a boolean, an identifier that does not resolve, or a signed value that is not a number, causes the whole ` css`` ` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
 
 The `css` tag must be a named import from `'ecij'`, which may be aliased, like `import { css as styled } from 'ecij'`. A local binding of the same name shadows it, so its templates are left alone.
 

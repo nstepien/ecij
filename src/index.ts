@@ -9,9 +9,15 @@ import type {
   MemberExpression,
   ModuleExportName,
   ParamPattern,
+  ParenthesizedExpression,
   Program,
   SwitchCase,
   TaggedTemplateExpression,
+  TemplateElement,
+  TSAsExpression,
+  TSNonNullExpression,
+  TSSatisfiesExpression,
+  TSTypeAssertion,
   UnaryOperator,
 } from '@oxc-project/types';
 import { RolldownMagicString, type Plugin, type TransformPluginContext } from 'rolldown';
@@ -103,9 +109,19 @@ interface ParsedFileInfo {
   readonly rootScope: Scope;
 }
 
-// A value known at build time: a string, numbers and class names included, or the namespace of a
-// module, represented by its parse, whose members are the exports of the module
-type StaticValue = string | ParsedFileInfo;
+// A value known at build time: a string, class names included, a number, or a big integer, which
+// can be interpolated, or the namespace of a module, represented by its parse, whose members are
+// the exports of the module
+type StaticValue = string | number | bigint | ParsedFileInfo;
+
+// Expressions that have the value of the expression they wrap: parentheses, like `(x)`, and the
+// type assertions of TypeScript, like `x as T`, `x satisfies T`, `x!`, and `<T>x`
+type TransparentExpression =
+  | ParenthesizedExpression
+  | TSAsExpression
+  | TSNonNullExpression
+  | TSSatisfiesExpression
+  | TSTypeAssertion;
 
 // Languages the parser can be told to parse a module as, see `meta.moduleType`
 type ParseLang = 'js' | 'jsx' | 'ts' | 'tsx';
@@ -128,6 +144,14 @@ const STYLESHEET_ID_REGEX = /\.[0-9a-f]{8}\.css$/;
 const DEFAULT_EXPORT_LOCAL_NAME = '*default*';
 
 const PARSE_LANGS: ReadonlySet<string> = new Set<ParseLang>(['js', 'jsx', 'ts', 'tsx']);
+
+const TRANSPARENT_EXPRESSION_TYPES: ReadonlySet<string> = new Set<TransparentExpression['type']>([
+  'ParenthesizedExpression',
+  'TSAsExpression',
+  'TSNonNullExpression',
+  'TSSatisfiesExpression',
+  'TSTypeAssertion',
+]);
 
 // Get the project root directory
 const PROJECT_ROOT = cwd();
@@ -155,25 +179,67 @@ function staticMemberNameOf(expression: MemberExpression): string | undefined {
     : undefined;
 }
 
+// Whether an expression has the value of the expression it wraps, see `TransparentExpression`
+function isTransparent(expression: Expression): expression is TransparentExpression {
+  return TRANSPARENT_EXPRESSION_TYPES.has(expression.type);
+}
+
+// Whether a value can be interpolated, which namespaces cannot
+function isInterpolable(value: StaticValue | undefined): value is string | number | bigint {
+  return value !== undefined && typeof value !== 'object';
+}
+
 // Whether a unary operator is a sign, the only unary operators that resolve
 function isSign(operator: UnaryOperator): operator is '-' | '+' {
   return operator === '-' || operator === '+';
 }
 
 // Applies a sign to a value, which converts it to a number like JS does, so that `-'5'` is `-5`.
-// Values that are not numbers do not resolve: a class name would be `NaN`, and a namespace throws.
-function signedValueOf(operator: '-' | '+', value: StaticValue | undefined): string | undefined {
-  if (typeof value !== 'string') return;
+// Values that are not numbers do not resolve: a class name would be `NaN`, and a namespace throws,
+// like `+` on a big integer.
+function signedValueOf(
+  operator: '-' | '+',
+  value: StaticValue | undefined,
+): number | bigint | undefined {
+  if (typeof value === 'bigint') {
+    return operator === '-' ? -value : undefined;
+  }
+
+  if (typeof value !== 'string' && typeof value !== 'number') return;
 
   const number = Number(value);
   if (Number.isNaN(number)) return;
 
-  return String(operator === '-' ? -number : number);
+  return operator === '-' ? -number : number;
+}
+
+// The string of a template literal, like `${gap}px`, from the values of its interpolations, unless
+// one of them cannot be interpolated
+function templateValueOf(
+  quasis: TemplateElement[],
+  values: Array<StaticValue | undefined>,
+): string | undefined {
+  // `cooked` is only `null` for the invalid escapes that only tagged templates allow
+  let text = quasis[0]!.value.cooked!;
+
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i];
+    if (!isInterpolable(value)) return;
+
+    text += String(value) + quasis[i + 1]!.value.cooked!;
+  }
+
+  return text;
 }
 
 // The name of an identifier, or of a chain of members of one, like `ns.inner.x`, signed or not,
-// like `-gap`, by which warnings refer to the interpolations that do not resolve
+// like `-gap`, and wrapped or not, like `(gap as number)`, by which warnings refer to the
+// interpolations that do not resolve
 function referenceNameOf(expression: Expression): string | undefined {
+  if (isTransparent(expression)) {
+    return referenceNameOf(expression.expression);
+  }
+
   if (expression.type === 'Identifier') {
     return expression.name;
   }
@@ -766,20 +832,42 @@ export function ecij(configuration?: Configuration | null): Plugin {
     }
 
     // Statically evaluates an expression of a file, like an interpolation or the initializer of a
-    // `const`, to its value: a string or number literal, an identifier bound to such a value, to a
-    // class name, or to the namespace of a module, in the file or imported, a member of such a
-    // namespace (`ns.x`), or any of these numbers, signed (`-5`, `-gap`, `+ns.x`). The value is
-    // only returned as a promise when it is read through an import or a member.
+    // `const`, to its value: a string, number, or big integer literal, a template literal of such
+    // values, an identifier bound to any of these values, to a class name, or to the namespace of
+    // a module, in the file or imported, a member of such a namespace (`ns.x`), any of these
+    // numbers, signed (`-5`, `-gap`, `+ns.x`), or any of these expressions wrapped in parentheses
+    // or type assertions (`(gap as number)!`). The value is only returned as a promise when it is
+    // read through an import or a member.
     function resolveValue(
       expression: Expression,
       scope: Scope,
       fileInfo: ParsedFileInfo,
     ): MaybePromise<StaticValue | undefined> {
+      if (isTransparent(expression)) {
+        return resolveValue(expression.expression, scope, fileInfo);
+      }
+
       if (expression.type === 'Literal') {
-        if (typeof expression.value === 'string' || typeof expression.value === 'number') {
-          return String(expression.value);
+        const { value } = expression;
+
+        // Booleans and `null` are not resolved: JS interpolates them as their names, while
+        // CSS-in-JS libraries like Emotion and styled-components drop `false` and `null`
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') {
+          return value;
         }
         return;
+      }
+
+      if (expression.type === 'TemplateLiteral') {
+        const { quasis } = expression;
+        const values = expression.expressions.map((interpolation) =>
+          resolveValue(interpolation, scope, fileInfo),
+        );
+
+        return values.some((value) => value instanceof Promise)
+          ? // oxlint-disable-next-line typescript/await-thenable
+            Promise.all(values).then((resolvedValues) => templateValueOf(quasis, resolvedValues))
+          : templateValueOf(quasis, values as Array<StaticValue | undefined>);
       }
 
       if (expression.type === 'UnaryExpression') {
@@ -904,8 +992,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
           const resolvedValue = await resolveValue(expression, scope, parsedInfo);
 
-          // Only strings can be interpolated, not namespaces
-          if (typeof resolvedValue !== 'string') {
+          if (!isInterpolable(resolvedValue)) {
             const name = referenceNameOf(expression);
 
             if (name !== undefined) {
@@ -933,7 +1020,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
             break;
           }
 
-          templateCss += resolvedValue;
+          templateCss += String(resolvedValue);
         }
       }
 
