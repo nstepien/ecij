@@ -865,9 +865,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
         );
 
         return values.some((value) => value instanceof Promise)
-          ? Promise.all(values.map((value) => Promise.resolve(value))).then((resolvedValues) =>
-              templateValueOf(quasis, resolvedValues),
-            )
+          ? // oxlint-disable-next-line typescript/await-thenable
+            Promise.all(values).then((resolvedValues) => templateValueOf(quasis, resolvedValues))
           : templateValueOf(quasis, values as Array<StaticValue | undefined>);
       }
 
