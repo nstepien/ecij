@@ -1,5 +1,6 @@
 import { appendFile, cp, mkdtempDisposable, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
+import { cwd } from 'node:process';
 
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
@@ -20,7 +21,7 @@ import {
 import { expect, test } from 'vitest';
 import { createVitest } from 'vitest/node';
 
-const normalize = (path: string) => normalizePath(relative(process.cwd(), path));
+const normalize = (path: string) => normalizePath(relative(cwd(), path));
 
 // Normalize the absolute paths of a log so snapshots are stable across machines
 function normalizeLog(log: RolldownLog) {
