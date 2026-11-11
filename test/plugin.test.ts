@@ -3,7 +3,13 @@ import { join } from 'node:path';
 
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
-import { rolldown, type OutputAsset, type RolldownLog } from 'rolldown';
+import {
+  rolldown,
+  type InputOptions,
+  type OutputAsset,
+  type OutputOptions,
+  type RolldownLog,
+} from 'rolldown';
 import { build, createServer, type BuildEnvironmentOptions, type DevEnvironment } from 'vite';
 import { expect, test } from 'vitest';
 import { createVitest } from 'vitest/node';
@@ -78,11 +84,16 @@ async function buildWithPlugin(
 
 // Helper to run a plain Rolldown build with the ecij plugin. Rolldown no longer bundles CSS, so a
 // stand-in CSS plugin collects the stylesheets and keeps them in the bundle as empty modules.
-async function bundleWithRolldown(input: string) {
+async function bundleWithRolldown(
+  input: string,
+  options?: InputOptions,
+  outputOptions?: OutputOptions,
+) {
   const logs: RolldownLog[] = [];
   const stylesheets: string[] = [];
 
   const bundle = await rolldown({
+    ...options,
     input,
     plugins: [
       ecij(),
@@ -101,7 +112,7 @@ async function bundleWithRolldown(input: string) {
       logs.push(normalizeLog(log));
     },
   });
-  const { output } = await bundle.generate({ sourcemap: true });
+  const { output } = await bundle.generate(outputOptions);
 
   return { chunk: output[0], stylesheets, logs };
 }
@@ -280,7 +291,11 @@ test('emit sourcemaps for transformed modules without sourcemap warnings', async
 // Vite does not forward `meta.magicString` to transform hooks,
 // so this is the only test covering the native magic string path
 test('support plain Rolldown builds', async () => {
-  const { chunk, logs } = await bundleWithRolldown('./test/fixtures/comprehensive.input.ts');
+  const { chunk, logs } = await bundleWithRolldown(
+    './test/fixtures/comprehensive.input.ts',
+    undefined,
+    { sourcemap: true },
+  );
 
   expect(logs).toMatchInlineSnapshot(`[]`);
   expect(chunk.code).toMatchInlineSnapshot(`
@@ -330,36 +345,14 @@ test('support plain Rolldown builds', async () => {
 });
 
 test('parse modules as the language Rolldown assigned them', async () => {
-  const logs: RolldownLog[] = [];
-  const stylesheets: string[] = [];
-
-  const bundle = await rolldown({
-    input: './test/fixtures/jsx.input.js',
+  const { chunk, stylesheets, logs } = await bundleWithRolldown('./test/fixtures/jsx.input.js', {
     // The fixture is a .js file with JSX, which only parses as the module type it is assigned
     moduleTypes: { '.js': 'jsx' },
     transform: { jsx: 'react' },
-    plugins: [
-      ecij(),
-      {
-        // Rolldown no longer bundles CSS, so stand in for a CSS plugin
-        name: 'stylesheets-as-side-effects',
-        transform: {
-          filter: { id: /\.css$/ },
-          handler(code) {
-            stylesheets.push(code);
-            return { code: '', moduleType: 'js', moduleSideEffects: 'no-treeshake' };
-          },
-        },
-      },
-    ],
-    onLog(_level, log) {
-      logs.push(log);
-    },
   });
-  const { output } = await bundle.generate();
 
   expect(logs).toMatchInlineSnapshot(`[]`);
-  expect(output[0].code).toMatchInlineSnapshot(`
+  expect(chunk.code).toMatchInlineSnapshot(`
     "// test/fixtures/jsx.input.js
     const buttonClass = (() => "css-0327dad9")();
     function Button() {
@@ -861,8 +854,7 @@ test('resolve values wrapped in parentheses or type assertions', async () => {
       color: \${unknownValue};
     \`;
     export { wrappedClass, wrappedUnresolvedClass };
-
-    //# sourceMappingURL=wrapped-interpolation.input.js.map"
+    "
   `);
   expect(stylesheets).toMatchInlineSnapshot(`
     [
@@ -2628,33 +2620,12 @@ test('hoisted local bindings declared after the template shadow the (aliased) cs
 });
 
 test('keep the declarations of TypeScript namespaces out of the module scope', async () => {
-  const logs: RolldownLog[] = [];
-  const stylesheets: string[] = [];
-
   // Unlike Vite, Rolldown transforms TypeScript after ecij, which then sees the namespaces
-  const bundle = await rolldown({
-    input: './test/fixtures/namespace-scoping.input.ts',
-    plugins: [
-      ecij(),
-      {
-        // Rolldown no longer bundles CSS, so stand in for a CSS plugin
-        name: 'stylesheets-as-side-effects',
-        transform: {
-          filter: { id: /\.css$/ },
-          handler(code) {
-            stylesheets.push(code);
-            return { code: '', moduleType: 'js', moduleSideEffects: 'no-treeshake' };
-          },
-        },
-      },
-    ],
-    onLog(_level, log) {
-      logs.push(log);
-    },
-  });
-  const { output } = await bundle.generate();
+  const { chunk, stylesheets, logs } = await bundleWithRolldown(
+    './test/fixtures/namespace-scoping.input.ts',
+  );
 
-  expect(output[0].code).toMatchInlineSnapshot(`
+  expect(chunk.code).toMatchInlineSnapshot(`
     "// test/fixtures/namespace-scoping.input.ts
     let Theme;
     (function(_Theme) {
