@@ -52,6 +52,11 @@ export const reexportClass = css`
   }
 `;
 
+// So do the names of `export *`
+export const starExportClass = css`
+  width: ${width}px;
+`;
+
 // Members of namespace imports resolve, the default export included
 export const namespaceImportClass = css`
   color: ${helper.default};
@@ -60,9 +65,4 @@ export const namespaceImportClass = css`
 // Destructured exports do not → NOT extracted
 export const destructuredExportClass = css`
   color: ${destructured};
-`;
-
-// Nor `export * from` re-exports → NOT extracted
-export const starExportClass = css`
-  width: ${width}px;
 `;
