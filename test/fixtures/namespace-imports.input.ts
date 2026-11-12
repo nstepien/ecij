@@ -30,6 +30,11 @@ export const reexportedNamespaceClass = css`
   }
 `;
 
+// Members re-exported from other modules resolve too
+export const reexportedMemberClass = css`
+  font-weight: ${helper.reexported};
+`;
+
 // `const` bindings of namespaces and of their members resolve too
 const aliasedStyle = style;
 const aliasedWidth = style.width;
@@ -40,11 +45,6 @@ export const aliasedNamespaceClass = css`
   &.${aliasedStyle.redClass} {
     width: auto;
   }
-`;
-
-// Members re-exported with `export { x } from` do not → NOT extracted
-export const reexportedMemberClass = css`
-  font-weight: ${helper.reexported};
 `;
 
 // Namespaces are not strings → NOT extracted

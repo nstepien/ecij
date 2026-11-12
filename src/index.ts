@@ -56,7 +56,7 @@ export interface Configuration {
 
 type MaybePromise<T> = T | Promise<T>;
 
-/** A binding imported by name from another module. */
+/** A binding imported or re-exported by name from another module. */
 interface ImportBinding {
   type: 'ImportBinding';
   source: string;
@@ -660,11 +660,27 @@ export function ecij(configuration?: Configuration | null): Plugin {
           );
         }
       } else if (statement.type === 'ExportNamedDeclaration') {
-        // TODO: handle re-exports
-        if (statement.source !== null) continue;
+        const { source } = statement;
 
         for (const specifier of statement.specifiers) {
-          exportedLocalNames.set(nameOf(specifier.exported), nameOf(specifier.local));
+          const exportedName = nameOf(specifier.exported);
+
+          if (source === null) {
+            exportedLocalNames.set(exportedName, nameOf(specifier.local));
+            continue;
+          }
+
+          // `export { x as y } from` binds no local name, so the import is bound to `{ y }`, which
+          // no identifier can be, like the `*default*` of `export default`. It leaves out `x`, as
+          // string names could make two `{ x as y }` the same, while `y` is unique in the module.
+          const localName = `{ ${exportedName} }`;
+
+          rootScope.identifiers.set(localName, {
+            type: 'ImportBinding',
+            source: source.value,
+            imported: nameOf(specifier.local),
+          });
+          exportedLocalNames.set(exportedName, localName);
         }
 
         // Only variables can be bound to static values, not functions or classes
