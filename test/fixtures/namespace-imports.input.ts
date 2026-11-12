@@ -3,7 +3,7 @@ import { css } from 'ecij';
 import * as helper from './import-forms-helper';
 import * as style from './imported-style';
 import * as nested from './namespace-imports-helper';
-import { literals } from './namespace-imports-helper';
+import { literals, style as reexportedStyle } from './namespace-imports-helper';
 
 // Members are the exports of the module, values and class names alike
 export const memberClass = css`
@@ -21,6 +21,15 @@ export const exportedNamespaceClass = css`
   font-weight: ${literals.fontWeight};
 `;
 
+// Namespaces re-exported from other modules are namespaces too, as members or imported by name
+export const reexportedNamespaceClass = css`
+  min-width: ${nested.style.width}px;
+
+  &.${reexportedStyle.redClass} {
+    height: auto;
+  }
+`;
+
 // `const` bindings of namespaces and of their members resolve too
 const aliasedStyle = style;
 const aliasedWidth = style.width;
@@ -33,7 +42,7 @@ export const aliasedNamespaceClass = css`
   }
 `;
 
-// Members re-exported from other modules do not → NOT extracted
+// Members re-exported with `export { x } from` do not → NOT extracted
 export const reexportedMemberClass = css`
   font-weight: ${helper.reexported};
 `;

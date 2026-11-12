@@ -7,6 +7,7 @@ import defaultColor, {
   reexportedClass,
   destructured,
   reexported,
+  width,
 } from './import-forms-helper';
 import * as helper from './import-forms-helper';
 import defaultClass from './import-forms-style';
@@ -51,7 +52,12 @@ export const destructuredExportClass = css`
   color: ${destructured};
 `;
 
-// Nor exports from other modules → NOT extracted
+// Nor `export { x } from` re-exports → NOT extracted
 export const reexportClass = css`
   font-weight: ${reexported};
+`;
+
+// Nor `export * from` re-exports → NOT extracted
+export const starExportClass = css`
+  width: ${width}px;
 `;

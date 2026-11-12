@@ -153,7 +153,7 @@ export const buttonClassname = css`
   color: ${accent}; /* const bindings of such literals or of other bindings that resolve */
   outline: ${outline}; /* template literals of such values */
   padding: ${spacing}px; /* named and default imports of such values from other modules */
-  background: ${theme.surface}; /* the members of namespace imports */
+  background: ${theme.surface}; /* the members of namespace imports and re-exports */
   translate: ${-1}px ${-spacing}px; /* and any of these numbers, signed */
 
   /* generated class names, including imported ones */
@@ -198,4 +198,4 @@ npm test -- -u
 
 ## TODO
 
-- Full import/export handling (re-exports)
+- Full import/export handling (`export { x } from` and `export * from` re-exports)

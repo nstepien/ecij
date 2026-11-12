@@ -64,7 +64,10 @@ interface ImportBinding {
   imported: string;
 }
 
-/** The namespace of another module, imported with `import * as ns`. */
+/**
+ * The namespace of another module, imported with `import * as ns` or re-exported with
+ * `export * as ns from`.
+ */
 interface NamespaceImport {
   type: 'NamespaceImport';
   source: string;
@@ -678,6 +681,20 @@ export function ecij(configuration?: Configuration | null): Plugin {
           rootScope.identifiers.set(DEFAULT_EXPORT_LOCAL_NAME, statement.declaration);
           exportedLocalNames.set('default', DEFAULT_EXPORT_LOCAL_NAME);
         }
+      } else if (statement.type === 'ExportAllDeclaration') {
+        // TODO: handle `export * from`
+        if (statement.exported === null) continue;
+
+        // `export * as ns from` binds no local name, so the namespace is bound to `* as ns`, which
+        // no identifier can be, like the `*default*` of `export default`
+        const exportedName = nameOf(statement.exported);
+        const localName = `* as ${exportedName}`;
+
+        rootScope.identifiers.set(localName, {
+          type: 'NamespaceImport',
+          source: statement.source.value,
+        });
+        exportedLocalNames.set(exportedName, localName);
       }
     }
 
