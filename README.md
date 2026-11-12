@@ -198,4 +198,4 @@ npm test -- -u
 
 ## TODO
 
-- Full import/export handling (`export { x } from` and `export * from` re-exports)
+- Full import/export handling (`export * from` re-exports)

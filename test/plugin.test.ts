@@ -1015,8 +1015,6 @@ test('resolve the supported import and export forms, and skip the others', async
     function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
-    // test/fixtures/imported-literals.ts
-    var fontWeight = "bold";
     // test/fixtures/imported-style.ts
     var width = 40.123;
     // test/fixtures/import-forms-helper.ts
@@ -1026,12 +1024,10 @@ test('resolve the supported import and export forms, and skip the others', async
     var defaultImportsClass = (() => "css-fa575357")();
     var typedModuleClass = (() => "css-d28f7ebe")();
     var reexportedImportsClass = (() => "css-4abd566b")();
-    var namespaceImportClass = (() => "css-e19eb6a1")();
+    var reexportClass = (() => "css-401399c9")();
+    var namespaceImportClass = (() => "css-5da77f95")();
     var destructuredExportClass = css\`
       color: \${destructured};
-    \`;
-    var reexportClass = css\`
-      font-weight: \${fontWeight};
     \`;
     var starExportClass = css\`
       width: \${width}px;
@@ -1069,7 +1065,15 @@ test('resolve the supported import and export forms, and skip the others', async
       }
     }
 
-    .css-e19eb6a1 {
+    .css-401399c9 {
+      font-weight: bold;
+
+      &.css-161357d4 {
+        color: inherit;
+      }
+    }
+
+    .css-5da77f95 {
       color: teal;
     }/*$vite$:1*/"
   `);
@@ -1077,62 +1081,42 @@ test('resolve the supported import and export forms, and skip the others', async
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "29: \`;
-    30: export const destructuredExportClass = css\`
-    31:   color: \${destructured};
+        "frame": "36: \`;
+    37: export const destructuredExportClass = css\`
+    38:   color: \${destructured};
                    ^
-    32: \`;
-    33: export const reexportClass = css\`",
+    39: \`;
+    40: export const starExportClass = css\`",
         "hook": "transform",
         "id": "test/fixtures/import-forms.input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/import-forms.input.ts",
-          "line": 31,
+          "line": 38,
         },
         "message": "skipped CSS extraction — could not resolve "destructured" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 891,
+        "pos": 1029,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "32: \`;
-    33: export const reexportClass = css\`
-    34:   font-weight: \${reexported};
-                         ^
-    35: \`;
-    36: export const starExportClass = css\`",
-        "hook": "transform",
-        "id": "test/fixtures/import-forms.input.ts",
-        "loc": {
-          "column": 17,
-          "file": "test/fixtures/import-forms.input.ts",
-          "line": 34,
-        },
-        "message": "skipped CSS extraction — could not resolve "reexported" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 960,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "35: \`;
-    36: export const starExportClass = css\`
-    37:   width: \${width}px;
+        "frame": "39: \`;
+    40: export const starExportClass = css\`
+    41:   width: \${width}px;
                    ^
-    38: \`;",
+    42: \`;",
         "hook": "transform",
         "id": "test/fixtures/import-forms.input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/import-forms.input.ts",
-          "line": 37,
+          "line": 41,
         },
         "message": "skipped CSS extraction — could not resolve "width" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1023,
+        "pos": 1094,
       },
     ]
   `);
@@ -1158,8 +1142,6 @@ test('resolve the members of namespace imports', async () => {
     function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
-    // test/fixtures/imported-literals.ts
-    var fontWeight = "bold";
     // test/fixtures/imported-style.ts
     var imported_style_exports = /* @__PURE__ */ __exportAll({
     	bgColor: () => backgroundColor,
@@ -1173,10 +1155,8 @@ test('resolve the members of namespace imports', async () => {
     var memberClass = (() => "css-cb417e87")();
     var exportedNamespaceClass = (() => "css-e0868db1")();
     var reexportedNamespaceClass = (() => "css-b6b045b1")();
-    var aliasedNamespaceClass = (() => "css-1dda2a15")();
-    var reexportedMemberClass = css\`
-      font-weight: \${fontWeight};
-    \`;
+    var reexportedMemberClass = (() => "css-a3f76bd8")();
+    var aliasedNamespaceClass = (() => "css-f2dc9625")();
     var namespaceValueClass = css\`
       color: \${imported_style_exports};
     \`;
@@ -1222,7 +1202,11 @@ test('resolve the members of namespace imports', async () => {
       }
     }
 
-    .css-1dda2a15 {
+    .css-a3f76bd8 {
+      font-weight: bold;
+    }
+
+    .css-f2dc9625 {
       max-width: 40.123px;
 
       &.css-348273b1 {
@@ -1232,26 +1216,6 @@ test('resolve the members of namespace imports', async () => {
   `);
   expect(result.logs).toMatchInlineSnapshot(`
     [
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "33: \`;
-    34: export const reexportedMemberClass = css\`
-    35:   font-weight: \${helper.reexported};
-                         ^
-    36: \`;
-    37: export const namespaceValueClass = css\`",
-        "hook": "transform",
-        "id": "test/fixtures/namespace-imports.input.ts",
-        "loc": {
-          "column": 17,
-          "file": "test/fixtures/namespace-imports.input.ts",
-          "line": 35,
-        },
-        "message": "skipped CSS extraction — could not resolve "helper.reexported" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 921,
-      },
       {
         "code": "PLUGIN_WARNING",
         "frame": "36: \`;

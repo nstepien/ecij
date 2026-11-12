@@ -7,6 +7,7 @@ import defaultColor, {
   reexportedClass,
   destructured,
   reexported,
+  reexportedDefault,
   width,
 } from './import-forms-helper';
 import * as helper from './import-forms-helper';
@@ -42,6 +43,15 @@ export const reexportedImportsClass = css`
   }
 `;
 
+// Re-exports resolve in the module they re-export from, default exports included
+export const reexportClass = css`
+  font-weight: ${reexported};
+
+  &.${reexportedDefault} {
+    color: inherit;
+  }
+`;
+
 // Members of namespace imports resolve, the default export included
 export const namespaceImportClass = css`
   color: ${helper.default};
@@ -50,11 +60,6 @@ export const namespaceImportClass = css`
 // Destructured exports do not → NOT extracted
 export const destructuredExportClass = css`
   color: ${destructured};
-`;
-
-// Nor `export { x } from` re-exports → NOT extracted
-export const reexportClass = css`
-  font-weight: ${reexported};
 `;
 
 // Nor `export * from` re-exports → NOT extracted
