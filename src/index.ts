@@ -108,8 +108,22 @@ interface ParsedFileInfo {
   readonly declarations: ReadonlyMap<TaggedTemplateExpression, Declaration>;
   /** Local names of the exported bindings, keyed by exported name. */
   readonly exportedLocalNames: ReadonlyMap<string, string>;
+  /**
+   * Import sources of the `export * from` statements, whose modules export the other names of
+   * this module, except `default`.
+   */
+  readonly exportStarSources: readonly string[];
   /** Module-level scope, where the imports and the exported bindings are declared. */
   readonly rootScope: Scope;
+}
+
+/**
+ * The binding that an export leads to, through the imports and re-exports in between: the binding
+ * `localName` declared in a module, or the namespace of a module, which has no local name.
+ */
+interface ResolvedExport {
+  fileInfo: ParsedFileInfo;
+  localName: string | undefined;
 }
 
 // A value known at build time: a string, class names included, a number, or a big integer, which
@@ -638,6 +652,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
     // Scope tracking: root scope for imports and module-level declarations
     const rootScope: Scope = { identifiers: new Map(), parent: null, isFunctionScope: true };
     const exportedLocalNames = new Map<string, string>();
+    const exportStarSources: string[] = [];
 
     // Collect the imports and exports from the top-level statements. The parse result's module
     // record lists them too, but converting it to JS objects takes longer than this loop, and
@@ -683,13 +698,32 @@ export function ecij(configuration?: Configuration | null): Plugin {
           exportedLocalNames.set(exportedName, localName);
         }
 
-        // Only variables can be bound to static values, not functions or classes
-        if (statement.declaration?.type === 'VariableDeclaration') {
-          for (const { id } of statement.declaration.declarations) {
-            if (id.type === 'Identifier') {
-              exportedLocalNames.set(id.name, id.name);
-            }
+        // Record every exported declaration, even those without a static value, like functions or
+        // destructured variables, as the names that a module exports itself are never taken from
+        // the modules of its `export *`. Types are left out, as they do not exist at runtime.
+        const { declaration } = statement;
+
+        if (declaration?.type === 'VariableDeclaration') {
+          const declaredScope: Scope = {
+            identifiers: new Map(),
+            parent: null,
+            isFunctionScope: true,
+          };
+
+          for (const { id } of declaration.declarations) {
+            recordBindingPattern(id, declaredScope);
           }
+
+          for (const name of declaredScope.identifiers.keys()) {
+            exportedLocalNames.set(name, name);
+          }
+        } else if (
+          declaration !== null &&
+          declaration.type !== 'TSTypeAliasDeclaration' &&
+          declaration.type !== 'TSInterfaceDeclaration' &&
+          declaration.id?.type === 'Identifier'
+        ) {
+          exportedLocalNames.set(declaration.id.name, declaration.id.name);
         }
       } else if (statement.type === 'ExportDefaultDeclaration') {
         // Bind the exported value, unless it is a TypeScript interface, which has none
@@ -698,8 +732,10 @@ export function ecij(configuration?: Configuration | null): Plugin {
           exportedLocalNames.set('default', DEFAULT_EXPORT_LOCAL_NAME);
         }
       } else if (statement.type === 'ExportAllDeclaration') {
-        // TODO: handle `export * from`
-        if (statement.exported === null) continue;
+        if (statement.exported === null) {
+          exportStarSources.push(statement.source.value);
+          continue;
+        }
 
         // `export * as ns from` binds no local name, so the namespace is bound to `* as ns`, which
         // no identifier can be, like the `*default*` of `export default`
@@ -745,6 +781,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
       filePath,
       declarations,
       exportedLocalNames,
+      exportStarSources,
       rootScope,
     };
   }
@@ -831,7 +868,8 @@ export function ecij(configuration?: Configuration | null): Plugin {
     async function resolveImportedModule(source: string, importer: string) {
       // Resolve the import path relative to the importer
       const resolvedId = await context.resolve(source, importer);
-      if (resolvedId == null) return;
+      // External modules are not part of the build, so their exports are only known at runtime
+      if (resolvedId == null || resolvedId.external) return;
 
       const { id } = resolvedId;
 
@@ -982,9 +1020,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
     }
 
     // Resolves the member `name` of a value, which only the namespaces of modules have: the value
-    // of the binding that the module exports by that name, which can itself be an import. It is
-    // async, as returning members without a promise once their namespace is resolved is not
-    // measurably faster.
+    // of the binding that the module exports by that name, which can itself be an import, or that
+    // the modules of its `export *` export. It is async, as returning members without a promise
+    // once their namespace is resolved is not measurably faster.
     async function resolveMember(
       object: MaybePromise<StaticValue | undefined>,
       name: string,
@@ -992,15 +1030,28 @@ export function ecij(configuration?: Configuration | null): Plugin {
       const namespace = await object;
       if (typeof namespace !== 'object') return;
 
-      const localName = namespace.exportedLocalNames.get(name);
-      if (localName === undefined) return;
+      let fileInfo = namespace;
+      let localName = namespace.exportedLocalNames.get(name);
 
-      const value = await resolveBinding(localName, namespace.rootScope, namespace);
+      // Look for the names that the module does not export itself in the modules of its `export *`.
+      // The others are resolved through the module's bindings, which is faster.
+      if (localName === undefined) {
+        const resolvedExport = await resolveExport(namespace, name, new Set());
+        if (resolvedExport == null) return;
 
-      // Import the stylesheet of that module ahead of this module's own when the value is a
-      // string, as it may be one of its class names
+        // A namespace has no local name
+        if (resolvedExport.localName === undefined) return resolvedExport.fileInfo;
+
+        fileInfo = resolvedExport.fileInfo;
+        localName = resolvedExport.localName;
+      }
+
+      const value = await resolveBinding(localName, fileInfo.rootScope, fileInfo);
+
+      // Import the stylesheet of the module that declares the binding ahead of this module's own
+      // when the value is a string, as it may be one of its class names
       if (typeof value === 'string') {
-        const stylesheetImport = stylesheetImportPerFile.get(namespace.filePath);
+        const stylesheetImport = stylesheetImportPerFile.get(fileInfo.filePath);
 
         if (stylesheetImport !== undefined) {
           stylesheetDependencies.add(stylesheetImport);
@@ -1008,6 +1059,65 @@ export function ecij(configuration?: Configuration | null): Plugin {
       }
 
       return value;
+    }
+
+    // Resolves the export `name` of a module to the binding it leads to, like the spec's
+    // ResolveExport: `null` if the module does not export that name, or `undefined` if the binding
+    // cannot be known, as a module cannot be loaded, or is ambiguous, as the modules of
+    // `export *` export different bindings by that name. Like Rolldown, a namespace is one binding
+    // however it is re-exported. The names already followed are skipped, which ends cycles.
+    async function resolveExport(
+      fileInfo: ParsedFileInfo,
+      name: string,
+      resolveSet: Set<string>,
+    ): Promise<ResolvedExport | null | undefined> {
+      const key = `${fileInfo.filePath}\0${name}`;
+      if (resolveSet.has(key)) return null;
+      resolveSet.add(key);
+
+      const localName = fileInfo.exportedLocalNames.get(name);
+
+      if (localName !== undefined) {
+        const binding = fileInfo.rootScope.identifiers.get(localName);
+
+        if (binding?.type !== 'ImportBinding' && binding?.type !== 'NamespaceImport') {
+          return { fileInfo, localName };
+        }
+
+        const importedModule = await loadImportedModule(binding.source, fileInfo.filePath);
+        if (importedModule === undefined) return;
+
+        return binding.type === 'ImportBinding'
+          ? resolveExport(importedModule, binding.imported, resolveSet)
+          : { fileInfo: importedModule, localName: undefined };
+      }
+
+      // `export *` does not export `default`
+      if (name === 'default') return null;
+
+      let resolvedExport: ResolvedExport | null = null;
+
+      for (const source of fileInfo.exportStarSources) {
+        const starModule = await loadImportedModule(source, fileInfo.filePath);
+        // Like bundlers, leave the names that only modules outside the build may export to runtime
+        if (starModule === undefined) continue;
+
+        const starExport = await resolveExport(starModule, name, resolveSet);
+        if (starExport === null) continue;
+
+        if (
+          starExport === undefined ||
+          (resolvedExport !== null &&
+            (starExport.fileInfo !== resolvedExport.fileInfo ||
+              starExport.localName !== resolvedExport.localName))
+        ) {
+          return;
+        }
+
+        resolvedExport = starExport;
+      }
+
+      return resolvedExport;
     }
 
     // Build the CSS of each template, resolving its interpolations

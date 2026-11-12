@@ -1,6 +1,7 @@
 import { appendFile, cp, mkdtempDisposable, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { cwd } from 'node:process';
+import { stripVTControlCharacters } from 'node:util';
 
 import { originalPositionFor, TraceMap, type EncodedSourceMap } from '@jridgewell/trace-mapping';
 import { ecij, type Configuration } from 'ecij/plugin';
@@ -23,13 +24,20 @@ import { createVitest } from 'vitest/node';
 
 const normalize = (path: string) => normalizePath(relative(cwd(), path));
 
-// Normalize the absolute paths of a log so snapshots are stable across machines
+// Normalize the absolute paths and the colors of a log so snapshots are stable across machines
 function normalizeLog(log: RolldownLog) {
+  log.message = stripVTControlCharacters(log.message);
   if (log.id !== undefined) {
     log.id = normalize(log.id);
   }
   if (log.loc?.file !== undefined) {
     log.loc.file = normalize(log.loc.file);
+  }
+  if (log.exporter !== undefined) {
+    log.exporter = normalize(log.exporter);
+  }
+  if (log.ids !== undefined) {
+    log.ids = log.ids.map(normalize);
   }
   return log;
 }
@@ -1015,8 +1023,6 @@ test('resolve the supported import and export forms, and skip the others', async
     function css() {
     	throw new Error("css\`\` should have been transformed by the ecij plugin");
     }
-    // test/fixtures/imported-style.ts
-    var width = 40.123;
     // test/fixtures/import-forms-helper.ts
     var { destructured } = { destructured: "navy" };
     // test/fixtures/import-forms.input.ts
@@ -1025,12 +1031,10 @@ test('resolve the supported import and export forms, and skip the others', async
     var typedModuleClass = (() => "css-d28f7ebe")();
     var reexportedImportsClass = (() => "css-4abd566b")();
     var reexportClass = (() => "css-401399c9")();
-    var namespaceImportClass = (() => "css-5da77f95")();
+    var starExportClass = (() => "css-a3db44d0")();
+    var namespaceImportClass = (() => "css-d6028b66")();
     var destructuredExportClass = css\`
       color: \${destructured};
-    \`;
-    var starExportClass = css\`
-      width: \${width}px;
     \`;
     export { defaultImportsClass, destructuredExportClass, namespaceImportClass, reexportClass, reexportedImportsClass, starExportClass, stringNameClass, typedModuleClass };"
   `);
@@ -1073,7 +1077,11 @@ test('resolve the supported import and export forms, and skip the others', async
       }
     }
 
-    .css-5da77f95 {
+    .css-a3db44d0 {
+      width: 40.123px;
+    }
+
+    .css-d6028b66 {
       color: teal;
     }/*$vite$:1*/"
   `);
@@ -1081,29 +1089,9 @@ test('resolve the supported import and export forms, and skip the others', async
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "36: \`;
-    37: export const destructuredExportClass = css\`
-    38:   color: \${destructured};
-                   ^
-    39: \`;
-    40: export const starExportClass = css\`",
-        "hook": "transform",
-        "id": "test/fixtures/import-forms.input.ts",
-        "loc": {
-          "column": 11,
-          "file": "test/fixtures/import-forms.input.ts",
-          "line": 38,
-        },
-        "message": "skipped CSS extraction — could not resolve "destructured" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1029,
-      },
-      {
-        "code": "PLUGIN_WARNING",
         "frame": "39: \`;
-    40: export const starExportClass = css\`
-    41:   width: \${width}px;
+    40: export const destructuredExportClass = css\`
+    41:   color: \${destructured};
                    ^
     42: \`;",
         "hook": "transform",
@@ -1113,10 +1101,10 @@ test('resolve the supported import and export forms, and skip the others', async
           "file": "test/fixtures/import-forms.input.ts",
           "line": 41,
         },
-        "message": "skipped CSS extraction — could not resolve "width" to a static string or number",
+        "message": "skipped CSS extraction — could not resolve "destructured" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1094,
+        "pos": 1089,
       },
     ]
   `);
@@ -1315,6 +1303,292 @@ test('resolve the members of namespace imports', async () => {
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 1323,
+      },
+    ]
+  `);
+});
+
+test('resolve the exports of `export *`, and skip ambiguous ones', async () => {
+  const { chunk, stylesheets, logs } = await bundleWithRolldown(
+    './test/fixtures/export-star/input.ts',
+    { external: ['external-tokens'] },
+  );
+
+  expect(chunk.code).toMatchInlineSnapshot(`
+    "import { fromExternal, fromExternal as reexportedExternal } from "external-tokens";
+    // \\0rolldown/runtime.js
+    var __defProp = Object.defineProperty;
+    var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+    var __getOwnPropNames = Object.getOwnPropertyNames;
+    var __hasOwnProp = Object.prototype.hasOwnProperty;
+    var __exportAll = (all, no_symbols) => {
+    	let target = {};
+    	for (var name in all) __defProp(target, name, {
+    		get: all[name],
+    		enumerable: true
+    	});
+    	if (!no_symbols) __defProp(target, Symbol.toStringTag, { value: "Module" });
+    	return target;
+    };
+    var __copyProps = (to, from, except, desc) => {
+    	if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
+    		key = keys[i];
+    		if (!__hasOwnProp.call(to, key) && key !== except) __defProp(to, key, {
+    			get: ((k) => from[k]).bind(null, key),
+    			enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+    		});
+    	}
+    	return to;
+    };
+    var __reExport = (target, mod, secondTarget) => (__copyProps(target, mod, "default"), secondTarget && __copyProps(secondTarget, mod, "default"));
+    // index.js
+    function css() {
+    	throw new Error("css\`\` should have been transformed by the ecij plugin");
+    }
+    // test/fixtures/imported-style.ts
+    const redClass = (() => "css-348273b1")();
+    // test/fixtures/export-star/tokens.ts
+    var tokens_exports = /* @__PURE__ */ __exportAll({
+    	color: () => color,
+    	gap: () => 4
+    });
+    const color = "teal";
+    // test/fixtures/export-star/barrel.ts
+    var barrel_exports = /* @__PURE__ */ __exportAll({
+    	bgColor: () => bgColor,
+    	color: () => color,
+    	fontSize: () => 16,
+    	fontWeight: () => fontWeight,
+    	gap: () => 4,
+    	redClass: () => redClass,
+    	reexportedExternal: () => reexportedExternal,
+    	tokens: () => tokens_exports,
+    	width: () => width
+    });
+    import * as import_external_tokens from "external-tokens";
+    __reExport(barrel_exports, import_external_tokens);
+    __reExport(barrel_exports, barrel_exports);
+    const fontWeight = "normal";
+    function width() {}
+    const { bgColor } = { bgColor: "black" };
+    // test/fixtures/export-star/input.ts
+    const starClass = (() => "css-fe0eb918")();
+    const ownExportClass = (() => "css-83f2a53a")();
+    const sameBindingClass = (() => "css-3381f7d1")();
+    const ownFunctionClass = css\`
+      width: \${width}px;
+    \`;
+    const ownDestructuredClass = css\`
+      background: \${bgColor};
+    \`;
+    const ambiguousClass = css\`
+      margin: \${void 0}px;
+    \`;
+    const defaultClass = css\`
+      color: \${barrel_exports.default};
+    \`;
+    const externalStarClass = css\`
+      color: \${barrel_exports.fromExternal};
+    \`;
+    const externalReexportClass = css\`
+      color: \${reexportedExternal};
+    \`;
+    const externalImportClass = css\`
+      color: \${fromExternal};
+    \`;
+    export { ambiguousClass, defaultClass, externalImportClass, externalReexportClass, externalStarClass, ownDestructuredClass, ownExportClass, ownFunctionClass, sameBindingClass, starClass };
+    "
+  `);
+  expect(stylesheets).toMatchInlineSnapshot(`
+    [
+      ".css-348273b1 {
+      /* red class */
+      color: red;
+    }",
+      ".css-fe0eb918 {
+      font-size: 16px;
+      gap: 4px;
+
+      &.css-348273b1 {
+        color: teal;
+      }
+    }
+
+    .css-83f2a53a {
+      font-weight: normal;
+    }
+
+    .css-3381f7d1 {
+      margin: 4px;
+      border-color: teal;
+    }",
+    ]
+  `);
+  expect(logs).toMatchInlineSnapshot(`
+    [
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "32: // Even those without static values → NOT extracted
+    33: export const ownFunctionClass = css\`
+    34:   width: \${barrel.width as unknown as number}px;
+                   ^
+    35: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 34,
+        },
+        "message": "skipped CSS extraction — could not resolve "barrel.width" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 995,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "36: 
+    37: export const ownDestructuredClass = css\`
+    38:   background: \${barrel.bgColor};
+                        ^
+    39: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 16,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 38,
+        },
+        "message": "skipped CSS extraction — could not resolve "barrel.bgColor" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1094,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "41: // Different bindings by the same name are ambiguous, even with the same value → NOT extracted
+    42: export const ambiguousClass = css\`
+    43:   margin: \${barrel.spacing}px;
+                    ^
+    44: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 12,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 43,
+        },
+        "message": "skipped CSS extraction — could not resolve "barrel.spacing" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1257,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "48:   color: \${
+    49:     // @ts-expect-error -- not exported
+    50:     barrel.default
+            ^
+    51:   };
+    52: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 4,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 50,
+        },
+        "message": "skipped CSS extraction — could not resolve "barrel.default" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1425,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "56:   color: \${
+    57:     // @ts-expect-error -- an external module, which is not installed
+    58:     barrel.fromExternal
+            ^
+    59:   };
+    60: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 4,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 58,
+        },
+        "message": "skipped CSS extraction — could not resolve "barrel.fromExternal" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1653,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "62: // Nor the values that lead to them → NOT extracted
+    63: export const externalReexportClass = css\`
+    64:   color: \${barrel.reexportedExternal};
+                   ^
+    65: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 64,
+        },
+        "message": "skipped CSS extraction — could not resolve "barrel.reexportedExternal" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1787,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "66: 
+    67: export const externalImportClass = css\`
+    68:   color: \${fromExternal};
+                   ^
+    69: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 68,
+        },
+        "message": "skipped CSS extraction — could not resolve "fromExternal" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1870,
+      },
+      {
+        "code": "NAMESPACE_CONFLICT",
+        "exporter": "test/fixtures/export-star/barrel.ts",
+        "id": "test/fixtures/export-star/barrel.ts",
+        "ids": [
+          "test/fixtures/export-star/reexports-a.ts",
+          "test/fixtures/export-star/reexports-b.ts",
+        ],
+        "loc": {
+          "column": 13,
+          "file": "test/fixtures/export-star/barrel.ts",
+          "line": 6,
+        },
+        "message": "[NAMESPACE_CONFLICT] Conflicting namespaces: "test/fixtures/export-star/barrel.ts" re-exports "spacing" from one of the modules "test/fixtures/export-star/reexports-a.ts" and "test/fixtures/export-star/reexports-b.ts" (will be ignored).
+       ╭─[ test/fixtures/export-star/reexports-a.ts:6:14 ]
+       │
+     6 │ export const spacing = 8;
+       │              ───┬───  
+       │                 ╰───── One matching export is here.
+       │
+       ├─[ test/fixtures/export-star/reexports-b.ts:8:14 ]
+       │
+     8 │ export const spacing = 8;
+       │              ───┬───  
+       │                 ╰───── One matching export is here.
+    ───╯
+    ",
+        "pos": 223,
       },
     ]
   `);

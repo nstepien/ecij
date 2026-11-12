@@ -165,6 +165,8 @@ export const buttonClassname = css`
 
 Parentheses and TypeScript's type assertions, like `as`, `satisfies`, and `!`, keep the value they wrap, so `export const spacing = 8 as const` resolves too.
 
+Imports are followed through the modules that export them again, including barrel files with `export *`. Like in JS, a name that several modules of `export *` export from different declarations is ambiguous, so it is not resolved. Neither are the values of external modules, which are not part of the build.
+
 `let` and `var` bindings, parameters, and destructured bindings are never resolved, but they still shadow outer bindings of the same name.
 
 Any other interpolation, like a call, a ternary, an object property, a boolean, an identifier that does not resolve, or a signed value that is not a number, causes the whole ` css`` ` block to be skipped with a warning (`COMPLEX_INTERPOLATION` or `UNRESOLVED_INTERPOLATION`). The runtime `css` call is left in place, so the mistake fails loudly instead of silently shipping broken styles.
@@ -195,7 +197,3 @@ npm test
 # Update test snapshots
 npm test -- -u
 ```
-
-## TODO
-
-- Full import/export handling (`export * from` re-exports)
