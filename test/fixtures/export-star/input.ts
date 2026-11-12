@@ -11,10 +11,7 @@ export const starClass = css`
   gap: ${gap}px;
 
   &.${redClass} {
-    color: ${
-      // @ts-expect-error -- TypeScript takes the type that the barrel exports, which JS does not have
-      barrel.color
-    };
+    color: inherit;
   }
 `;
 
@@ -27,6 +24,22 @@ export const ownExportClass = css`
 export const sameBindingClass = css`
   margin: ${barrel.gap}px;
   border-color: ${barrel.tokens.color};
+`;
+
+// Type-only exports do not exist at runtime, so the names of `export *` resolve
+export const typeOnlyExportsClass = css`
+  color: ${
+    // @ts-expect-error -- TypeScript takes the type that the barrel exports, which JS does not have
+    barrel.color
+  };
+  border-radius: ${
+    // @ts-expect-error -- TypeScript takes the type-only export, which JS does not have
+    barrel.radius
+  }px;
+  border-style: ${
+    // @ts-expect-error -- TypeScript takes the type-only export, which JS does not have
+    barrel.borderStyle
+  };
 `;
 
 // Even those without static values → NOT extracted
@@ -49,6 +62,14 @@ export const defaultClass = css`
     // @ts-expect-error -- not exported
     barrel.default
   };
+`;
+
+// Nor type-only namespaces → NOT extracted
+export const typeOnlyNamespaceClass = css`
+  gap: ${
+    // @ts-expect-error -- TypeScript takes the type-only export, which JS does not have
+    barrel.typeNs.gap
+  }px;
 `;
 
 // Nor the names that only modules outside the build may export → NOT extracted

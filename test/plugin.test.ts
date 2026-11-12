@@ -1349,17 +1349,22 @@ test('resolve the exports of `export *`, and skip ambiguous ones', async () => {
     const redClass = (() => "css-348273b1")();
     // test/fixtures/export-star/tokens.ts
     var tokens_exports = /* @__PURE__ */ __exportAll({
+    	borderStyle: () => borderStyle,
     	color: () => color,
-    	gap: () => 4
+    	gap: () => 4,
+    	radius: () => 2
     });
     const color = "teal";
+    const borderStyle = "solid";
     // test/fixtures/export-star/barrel.ts
     var barrel_exports = /* @__PURE__ */ __exportAll({
     	bgColor: () => bgColor,
+    	borderStyle: () => borderStyle,
     	color: () => color,
     	fontSize: () => 16,
     	fontWeight: () => fontWeight,
     	gap: () => 4,
+    	radius: () => 2,
     	redClass: () => redClass,
     	reexportedExternal: () => reexportedExternal,
     	tokens: () => tokens_exports,
@@ -1375,6 +1380,7 @@ test('resolve the exports of `export *`, and skip ambiguous ones', async () => {
     const starClass = (() => "css-fe0eb918")();
     const ownExportClass = (() => "css-83f2a53a")();
     const sameBindingClass = (() => "css-3381f7d1")();
+    const typeOnlyExportsClass = (() => "css-8b31d62e")();
     const ownFunctionClass = css\`
       width: \${width}px;
     \`;
@@ -1387,6 +1393,9 @@ test('resolve the exports of `export *`, and skip ambiguous ones', async () => {
     const defaultClass = css\`
       color: \${barrel_exports.default};
     \`;
+    const typeOnlyNamespaceClass = css\`
+      gap: \${barrel_exports.typeNs.gap}px;
+    \`;
     const externalStarClass = css\`
       color: \${barrel_exports.fromExternal};
     \`;
@@ -1396,7 +1405,7 @@ test('resolve the exports of `export *`, and skip ambiguous ones', async () => {
     const externalImportClass = css\`
       color: \${fromExternal};
     \`;
-    export { ambiguousClass, defaultClass, externalImportClass, externalReexportClass, externalStarClass, ownDestructuredClass, ownExportClass, ownFunctionClass, sameBindingClass, starClass };
+    export { ambiguousClass, defaultClass, externalImportClass, externalReexportClass, externalStarClass, ownDestructuredClass, ownExportClass, ownFunctionClass, sameBindingClass, starClass, typeOnlyExportsClass, typeOnlyNamespaceClass };
     "
   `);
   expect(stylesheets).toMatchInlineSnapshot(`
@@ -1410,7 +1419,7 @@ test('resolve the exports of `export *`, and skip ambiguous ones', async () => {
       gap: 4px;
 
       &.css-348273b1 {
-        color: teal;
+        color: inherit;
       }
     }
 
@@ -1421,6 +1430,12 @@ test('resolve the exports of `export *`, and skip ambiguous ones', async () => {
     .css-3381f7d1 {
       margin: 4px;
       border-color: teal;
+    }
+
+    .css-8b31d62e {
+      color: teal;
+      border-radius: 2px;
+      border-style: solid;
     }",
     ]
   `);
@@ -1428,138 +1443,158 @@ test('resolve the exports of `export *`, and skip ambiguous ones', async () => {
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "32: // Even those without static values → NOT extracted
-    33: export const ownFunctionClass = css\`
-    34:   width: \${barrel.width as unknown as number}px;
+        "frame": "45: // Even those without static values → NOT extracted
+    46: export const ownFunctionClass = css\`
+    47:   width: \${barrel.width as unknown as number}px;
                    ^
-    35: \`;",
+    48: \`;",
         "hook": "transform",
         "id": "test/fixtures/export-star/input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/export-star/input.ts",
-          "line": 34,
+          "line": 47,
         },
         "message": "skipped CSS extraction — could not resolve "barrel.width" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 995,
+        "pos": 1403,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "36: 
-    37: export const ownDestructuredClass = css\`
-    38:   background: \${barrel.bgColor};
+        "frame": "49: 
+    50: export const ownDestructuredClass = css\`
+    51:   background: \${barrel.bgColor};
                         ^
-    39: \`;",
+    52: \`;",
         "hook": "transform",
         "id": "test/fixtures/export-star/input.ts",
         "loc": {
           "column": 16,
           "file": "test/fixtures/export-star/input.ts",
-          "line": 38,
+          "line": 51,
         },
         "message": "skipped CSS extraction — could not resolve "barrel.bgColor" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1094,
+        "pos": 1502,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "41: // Different bindings by the same name are ambiguous, even with the same value → NOT extracted
-    42: export const ambiguousClass = css\`
-    43:   margin: \${barrel.spacing}px;
+        "frame": "54: // Different bindings by the same name are ambiguous, even with the same value → NOT extracted
+    55: export const ambiguousClass = css\`
+    56:   margin: \${barrel.spacing}px;
                     ^
-    44: \`;",
+    57: \`;",
         "hook": "transform",
         "id": "test/fixtures/export-star/input.ts",
         "loc": {
           "column": 12,
           "file": "test/fixtures/export-star/input.ts",
-          "line": 43,
+          "line": 56,
         },
         "message": "skipped CSS extraction — could not resolve "barrel.spacing" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1257,
+        "pos": 1665,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "48:   color: \${
-    49:     // @ts-expect-error -- not exported
-    50:     barrel.default
+        "frame": "61:   color: \${
+    62:     // @ts-expect-error -- not exported
+    63:     barrel.default
             ^
-    51:   };
-    52: \`;",
-        "hook": "transform",
-        "id": "test/fixtures/export-star/input.ts",
-        "loc": {
-          "column": 4,
-          "file": "test/fixtures/export-star/input.ts",
-          "line": 50,
-        },
-        "message": "skipped CSS extraction — could not resolve "barrel.default" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1425,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "56:   color: \${
-    57:     // @ts-expect-error -- an external module, which is not installed
-    58:     barrel.fromExternal
-            ^
-    59:   };
-    60: \`;",
-        "hook": "transform",
-        "id": "test/fixtures/export-star/input.ts",
-        "loc": {
-          "column": 4,
-          "file": "test/fixtures/export-star/input.ts",
-          "line": 58,
-        },
-        "message": "skipped CSS extraction — could not resolve "barrel.fromExternal" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1653,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "62: // Nor the values that lead to them → NOT extracted
-    63: export const externalReexportClass = css\`
-    64:   color: \${barrel.reexportedExternal};
-                   ^
+    64:   };
     65: \`;",
         "hook": "transform",
         "id": "test/fixtures/export-star/input.ts",
         "loc": {
-          "column": 11,
+          "column": 4,
           "file": "test/fixtures/export-star/input.ts",
-          "line": 64,
+          "line": 63,
         },
-        "message": "skipped CSS extraction — could not resolve "barrel.reexportedExternal" to a static string or number",
+        "message": "skipped CSS extraction — could not resolve "barrel.default" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1787,
+        "pos": 1833,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "66: 
-    67: export const externalImportClass = css\`
-    68:   color: \${fromExternal};
+        "frame": "69:   gap: \${
+    70:     // @ts-expect-error -- TypeScript takes the type-only export, which JS does not have
+    71:     barrel.typeNs.gap
+            ^
+    72:   }px;
+    73: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 4,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 71,
+        },
+        "message": "skipped CSS extraction — could not resolve "barrel.typeNs.gap" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 2047,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "77:   color: \${
+    78:     // @ts-expect-error -- an external module, which is not installed
+    79:     barrel.fromExternal
+            ^
+    80:   };
+    81: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 4,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 79,
+        },
+        "message": "skipped CSS extraction — could not resolve "barrel.fromExternal" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 2280,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "83: // Nor the values that lead to them → NOT extracted
+    84: export const externalReexportClass = css\`
+    85:   color: \${barrel.reexportedExternal};
                    ^
-    69: \`;",
+    86: \`;",
         "hook": "transform",
         "id": "test/fixtures/export-star/input.ts",
         "loc": {
           "column": 11,
           "file": "test/fixtures/export-star/input.ts",
-          "line": 68,
+          "line": 85,
+        },
+        "message": "skipped CSS extraction — could not resolve "barrel.reexportedExternal" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 2414,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "87: 
+    88: export const externalImportClass = css\`
+    89:   color: \${fromExternal};
+                   ^
+    90: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/export-star/input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/export-star/input.ts",
+          "line": 89,
         },
         "message": "skipped CSS extraction — could not resolve "fromExternal" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1870,
+        "pos": 2497,
       },
       {
         "code": "NAMESPACE_CONFLICT",

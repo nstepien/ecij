@@ -675,9 +675,16 @@ export function ecij(configuration?: Configuration | null): Plugin {
           );
         }
       } else if (statement.type === 'ExportNamedDeclaration') {
+        // Type-only exports, like `export type { x }`, types, or `declare` declarations, do not
+        // exist at runtime
+        if (statement.exportKind === 'type') continue;
+
         const { source } = statement;
 
         for (const specifier of statement.specifiers) {
+          // Nor do the type-only specifiers of other exports, like `export { type x }`
+          if (specifier.exportKind === 'type') continue;
+
           const exportedName = nameOf(specifier.exported);
 
           if (source === null) {
@@ -700,7 +707,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
 
         // Record every exported declaration, even those without a static value, like functions or
         // destructured variables, as the names that a module exports itself are never taken from
-        // the modules of its `export *`. Types are left out, as they do not exist at runtime.
+        // the modules of its `export *`
         const { declaration } = statement;
 
         if (declaration?.type === 'VariableDeclaration') {
@@ -717,12 +724,7 @@ export function ecij(configuration?: Configuration | null): Plugin {
           for (const name of declaredScope.identifiers.keys()) {
             exportedLocalNames.set(name, name);
           }
-        } else if (
-          declaration !== null &&
-          declaration.type !== 'TSTypeAliasDeclaration' &&
-          declaration.type !== 'TSInterfaceDeclaration' &&
-          declaration.id?.type === 'Identifier'
-        ) {
+        } else if (declaration?.id?.type === 'Identifier') {
           exportedLocalNames.set(declaration.id.name, declaration.id.name);
         }
       } else if (statement.type === 'ExportDefaultDeclaration') {
@@ -732,6 +734,9 @@ export function ecij(configuration?: Configuration | null): Plugin {
           exportedLocalNames.set('default', DEFAULT_EXPORT_LOCAL_NAME);
         }
       } else if (statement.type === 'ExportAllDeclaration') {
+        // Type-only re-exports, like `export type * from`, do not exist at runtime either
+        if (statement.exportKind === 'type') continue;
+
         if (statement.exported === null) {
           exportStarSources.push(statement.source.value);
           continue;
@@ -1105,10 +1110,12 @@ export function ecij(configuration?: Configuration | null): Plugin {
         const starExport = await resolveExport(starModule, name, resolveSet);
         if (starExport === null) continue;
 
+        // Stop at a binding that is unknown or differs from another module's. Bindings are compared
+        // by module ID, as the cached parse of a module can be replaced while the search awaits.
         if (
           starExport === undefined ||
           (resolvedExport !== null &&
-            (starExport.fileInfo !== resolvedExport.fileInfo ||
+            (starExport.fileInfo.filePath !== resolvedExport.fileInfo.filePath ||
               starExport.localName !== resolvedExport.localName))
         ) {
           return;
