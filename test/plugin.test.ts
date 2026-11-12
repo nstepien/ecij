@@ -1017,6 +1017,8 @@ test('resolve the supported import and export forms, and skip the others', async
     }
     // test/fixtures/imported-literals.ts
     var fontWeight = "bold";
+    // test/fixtures/imported-style.ts
+    var width = 40.123;
     // test/fixtures/import-forms-helper.ts
     var { destructured } = { destructured: "navy" };
     // test/fixtures/import-forms.input.ts
@@ -1031,7 +1033,10 @@ test('resolve the supported import and export forms, and skip the others', async
     var reexportClass = css\`
       font-weight: \${fontWeight};
     \`;
-    export { defaultImportsClass, destructuredExportClass, namespaceImportClass, reexportClass, reexportedImportsClass, stringNameClass, typedModuleClass };"
+    var starExportClass = css\`
+      width: \${width}px;
+    \`;
+    export { defaultImportsClass, destructuredExportClass, namespaceImportClass, reexportClass, reexportedImportsClass, starExportClass, stringNameClass, typedModuleClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-161357d4 {
@@ -1088,7 +1093,7 @@ test('resolve the supported import and export forms, and skip the others', async
         "message": "skipped CSS extraction — could not resolve "destructured" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 884,
+        "pos": 891,
       },
       {
         "code": "PLUGIN_WARNING",
@@ -1096,7 +1101,8 @@ test('resolve the supported import and export forms, and skip the others', async
     33: export const reexportClass = css\`
     34:   font-weight: \${reexported};
                          ^
-    35: \`;",
+    35: \`;
+    36: export const starExportClass = css\`",
         "hook": "transform",
         "id": "test/fixtures/import-forms.input.ts",
         "loc": {
@@ -1107,7 +1113,26 @@ test('resolve the supported import and export forms, and skip the others', async
         "message": "skipped CSS extraction — could not resolve "reexported" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 953,
+        "pos": 960,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "35: \`;
+    36: export const starExportClass = css\`
+    37:   width: \${width}px;
+                   ^
+    38: \`;",
+        "hook": "transform",
+        "id": "test/fixtures/import-forms.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/import-forms.input.ts",
+          "line": 37,
+        },
+        "message": "skipped CSS extraction — could not resolve "width" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1023,
       },
     ]
   `);
@@ -1147,7 +1172,8 @@ test('resolve the members of namespace imports', async () => {
     // test/fixtures/namespace-imports.input.ts
     var memberClass = (() => "css-cb417e87")();
     var exportedNamespaceClass = (() => "css-e0868db1")();
-    var aliasedNamespaceClass = (() => "css-f5843dd0")();
+    var reexportedNamespaceClass = (() => "css-b6b045b1")();
+    var aliasedNamespaceClass = (() => "css-1dda2a15")();
     var reexportedMemberClass = css\`
       font-weight: \${fontWeight};
     \`;
@@ -1168,7 +1194,7 @@ test('resolve the members of namespace imports', async () => {
         width: \${style.width}px;
       \`;
     }
-    export { aliasedNamespaceClass, computedMemberClass, exportedNamespaceClass, memberClass, namespaceValueClass, objectMemberClass, reexportedMemberClass, shadowedNamespace, valueMemberClass };"
+    export { aliasedNamespaceClass, computedMemberClass, exportedNamespaceClass, memberClass, namespaceValueClass, objectMemberClass, reexportedMemberClass, reexportedNamespaceClass, shadowedNamespace, valueMemberClass };"
   `);
   expect(result.css).toMatchInlineSnapshot(`
     ".css-348273b1 {
@@ -1188,7 +1214,15 @@ test('resolve the members of namespace imports', async () => {
       font-weight: bold;
     }
 
-    .css-f5843dd0 {
+    .css-b6b045b1 {
+      min-width: 40.123px;
+
+      &.css-348273b1 {
+        height: auto;
+      }
+    }
+
+    .css-1dda2a15 {
       max-width: 40.123px;
 
       &.css-348273b1 {
@@ -1200,72 +1234,32 @@ test('resolve the members of namespace imports', async () => {
     [
       {
         "code": "PLUGIN_WARNING",
-        "frame": "26: \`;
-    27: export const reexportedMemberClass = css\`
-    28:   font-weight: \${helper.reexported};
+        "frame": "33: \`;
+    34: export const reexportedMemberClass = css\`
+    35:   font-weight: \${helper.reexported};
                          ^
-    29: \`;
-    30: export const namespaceValueClass = css\`",
+    36: \`;
+    37: export const namespaceValueClass = css\`",
         "hook": "transform",
         "id": "test/fixtures/namespace-imports.input.ts",
         "loc": {
           "column": 17,
           "file": "test/fixtures/namespace-imports.input.ts",
-          "line": 28,
+          "line": 35,
         },
         "message": "skipped CSS extraction — could not resolve "helper.reexported" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 752,
+        "pos": 921,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "29: \`;
-    30: export const namespaceValueClass = css\`
-    31:   color: \${style};
-                   ^
-    32: \`;
-    33: export const valueMemberClass = css\`",
-        "hook": "transform",
-        "id": "test/fixtures/namespace-imports.input.ts",
-        "loc": {
-          "column": 11,
-          "file": "test/fixtures/namespace-imports.input.ts",
-          "line": 31,
-        },
-        "message": "skipped CSS extraction — could not resolve "style" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 826,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "32: \`;
-    33: export const valueMemberClass = css\`
-    34:   width: \${style.bgColor.length}px;
-                   ^
-    35: \`;
-    36: const theme = { color: "teal" };",
-        "hook": "transform",
-        "id": "test/fixtures/namespace-imports.input.ts",
-        "loc": {
-          "column": 11,
-          "file": "test/fixtures/namespace-imports.input.ts",
-          "line": 34,
-        },
-        "message": "skipped CSS extraction — could not resolve "style.bgColor.length" to a static string or number",
-        "plugin": "ecij",
-        "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 885,
-      },
-      {
-        "code": "PLUGIN_WARNING",
-        "frame": "36: const theme = { color: "teal" };
-    37: export const objectMemberClass = css\`
-    38:   color: \${theme.color};
+        "frame": "36: \`;
+    37: export const namespaceValueClass = css\`
+    38:   color: \${style};
                    ^
     39: \`;
-    40: export const computedMemberClass = css\`",
+    40: export const valueMemberClass = css\`",
         "hook": "transform",
         "id": "test/fixtures/namespace-imports.input.ts",
         "loc": {
@@ -1273,7 +1267,7 @@ test('resolve the members of namespace imports', async () => {
           "file": "test/fixtures/namespace-imports.input.ts",
           "line": 38,
         },
-        "message": "skipped CSS extraction — could not resolve "theme.color" to a static string or number",
+        "message": "skipped CSS extraction — could not resolve "style" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
         "pos": 995,
@@ -1281,11 +1275,11 @@ test('resolve the members of namespace imports', async () => {
       {
         "code": "PLUGIN_WARNING",
         "frame": "39: \`;
-    40: export const computedMemberClass = css\`
-    41:   color: \${style["bgColor"]};
+    40: export const valueMemberClass = css\`
+    41:   width: \${style.bgColor.length}px;
                    ^
     42: \`;
-    43: export function shadowedNamespace(style) {",
+    43: const theme = { color: "teal" };",
         "hook": "transform",
         "id": "test/fixtures/namespace-imports.input.ts",
         "loc": {
@@ -1293,30 +1287,70 @@ test('resolve the members of namespace imports', async () => {
           "file": "test/fixtures/namespace-imports.input.ts",
           "line": 41,
         },
-        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "message": "skipped CSS extraction — could not resolve "style.bgColor.length" to a static string or number",
         "plugin": "ecij",
-        "pluginCode": "COMPLEX_INTERPOLATION",
-        "pos": 1063,
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1054,
       },
       {
         "code": "PLUGIN_WARNING",
-        "frame": "43: export function shadowedNamespace(style) {
-    44:   return css\`
-    45:     width: \${style.width}px;
+        "frame": "43: const theme = { color: "teal" };
+    44: export const objectMemberClass = css\`
+    45:   color: \${theme.color};
+                   ^
+    46: \`;
+    47: export const computedMemberClass = css\`",
+        "hook": "transform",
+        "id": "test/fixtures/namespace-imports.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/namespace-imports.input.ts",
+          "line": 45,
+        },
+        "message": "skipped CSS extraction — could not resolve "theme.color" to a static string or number",
+        "plugin": "ecij",
+        "pluginCode": "UNRESOLVED_INTERPOLATION",
+        "pos": 1164,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "46: \`;
+    47: export const computedMemberClass = css\`
+    48:   color: \${style["bgColor"]};
+                   ^
+    49: \`;
+    50: export function shadowedNamespace(style) {",
+        "hook": "transform",
+        "id": "test/fixtures/namespace-imports.input.ts",
+        "loc": {
+          "column": 11,
+          "file": "test/fixtures/namespace-imports.input.ts",
+          "line": 48,
+        },
+        "message": "skipped CSS extraction — interpolation is not a static string, number, or identifier",
+        "plugin": "ecij",
+        "pluginCode": "COMPLEX_INTERPOLATION",
+        "pos": 1232,
+      },
+      {
+        "code": "PLUGIN_WARNING",
+        "frame": "50: export function shadowedNamespace(style) {
+    51:   return css\`
+    52:     width: \${style.width}px;
                      ^
-    46:   \`;
-    47: }",
+    53:   \`;
+    54: }",
         "hook": "transform",
         "id": "test/fixtures/namespace-imports.input.ts",
         "loc": {
           "column": 13,
           "file": "test/fixtures/namespace-imports.input.ts",
-          "line": 45,
+          "line": 52,
         },
         "message": "skipped CSS extraction — could not resolve "style.width" to a static string or number",
         "plugin": "ecij",
         "pluginCode": "UNRESOLVED_INTERPOLATION",
-        "pos": 1154,
+        "pos": 1323,
       },
     ]
   `);
